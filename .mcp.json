@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "esp-idf-docs": {
+      "type": "http",
+      "url": "https://mcp.espressif.com/docs"
+    }
+  }
+}

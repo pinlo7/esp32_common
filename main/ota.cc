@@ -1,25 +1,37 @@
 #include "ota.h"
 #include "system_info.h"
 #include "settings.h"
+#include "board.h"
+
 #include <cJSON.h>
 #include <esp_log.h>
 #include <esp_partition.h>
 #include <esp_ota_ops.h>
 #include <esp_app_format.h>
+#include <esp_timer.h>
+#include <mbedtls/sha256.h>
+#include <sys/time.h>
 #include <cstring>
-#include <vector>
 #include <sstream>
 #include <algorithm>
 
 #define TAG "Ota"
-#define CONFIG_OTA_URL "https://"
+#define CONFIG_OTA_URL "http://192.168.3.185:3001/api/device_manage/ota"
 
-Ota::Ota() {}
+Ota::Ota() {
+    // device_key_ = "test_secret";
+    device_key_ = GetDeviceSecret();
+    if (device_key_.empty()) {
+        ESP_LOGW(TAG, "No device key found, activation required");
+    }
+}
 
 Ota::~Ota() {
 }
 
-std::string Ota::GetCheckVersionUrl() {
+// ============ NVS 密钥管理 ============
+
+std::string Ota::GetOtaUrl() {
     Settings settings("wifi", false);
     std::string url = settings.GetString("ota_url");
     if (url.empty()) {
@@ -28,195 +40,275 @@ std::string Ota::GetCheckVersionUrl() {
     return url;
 }
 
-std::unique_ptr<Http> Ota::SetupHttp() {
-    auto& board = Board::GetInstance();
-    auto network = board.GetNetwork();
-    auto http = network->CreateHttp(0);
-    auto user_agent = SystemInfo::GetUserAgent();
-    http->SetHeader("Activation-Version", has_serial_number_ ? "2" : "1");
-    http->SetHeader("Device-Id", SystemInfo::GetMacAddress().c_str());
-    http->SetHeader("Client-Id", board.GetUuid());
-    if (has_serial_number_) {
-        http->SetHeader("Serial-Number", serial_number_.c_str());
-        ESP_LOGI(TAG, "Setup HTTP, User-Agent: %s, Serial-Number: %s", user_agent.c_str(), serial_number_.c_str());
-    }
-    http->SetHeader("User-Agent", user_agent);
-    http->SetHeader("Accept-Language", Lang::CODE);
-    http->SetHeader("Content-Type", "application/json");
-
-    return http;
+std::string Ota::GetDeviceSecret() {
+    Settings settings("device", false);
+    return settings.GetString("device_key");
 }
 
-/* 
- * Specification: https://ccnphfhqs21z.feishu.cn/wiki/FjW6wZmisimNBBkov6OcmfvknVd
- */
-esp_err_t Ota::CheckVersion() {
-    auto& board = Board::GetInstance();
+bool Ota::SaveDeviceSecret(const std::string& key) {
+    Settings settings("device", true);
+    settings.SetString("device_key", key);
+    device_key_ = key;
+    ESP_LOGI(TAG, "Device key saved");
+    return true;
+}
+
+bool Ota::HasDeviceSecret() const {
+    return !device_key_.empty();
+}
+
+// ============ 签名计算 ============
+
+std::string Ota::Sha256Hex(const std::string& input) {
+    unsigned char hash[32];
+    mbedtls_sha256((unsigned char*)input.c_str(), input.length(), hash, 0);
+
+    char hex[65];
+    for (int i = 0; i < 32; i++) {
+        sprintf(hex + i * 2, "%02x", hash[i]);
+    }
+    hex[64] = '\0';
+    return std::string(hex);
+}
+
+std::string Ota::GetTimestamp() {
+    time_t now;
+    time(&now);
+    return std::to_string(now);
+}
+
+std::string Ota::CalculateSignature(const std::string& body_json, const std::string& timestamp) {
+    if (!HasDeviceSecret()) {
+        return "";
+    }
+
+    // 1. 计算请求体 hash
+    std::string body_hash = Sha256Hex(body_json);
+
+    // 2. 拼接签名原文: device_key + timestamp + device_id + body_sha256
+    std::string device_id = SystemInfo::GetMacAddress();
+    std::string text = device_key_ + timestamp + device_id + body_hash;
+
+    // 3. 计算签名
+    return Sha256Hex(text);
+}
+
+// ============ HTTP 请求 ============
+
+std::string Ota::BuildRequestBody() {
     auto app_desc = esp_app_get_description();
+    auto& board = Board::GetInstance();
 
-    // Check if there is a new firmware version available
-    current_version_ = app_desc->version;
-    ESP_LOGI(TAG, "Current version: %s", current_version_.c_str());
+    cJSON* root = cJSON_CreateObject();
 
-    std::string url = GetCheckVersionUrl();
-    if (url.length() < 10) {
-        ESP_LOGE(TAG, "Check version URL is not properly set");
-        return ESP_ERR_INVALID_ARG;
+    // application
+    cJSON* app = cJSON_CreateObject();
+    cJSON_AddStringToObject(app, "version", app_desc->version);
+    cJSON_AddStringToObject(app, "elf_sha256", "");
+    cJSON_AddItemToObject(root, "application", app);
+
+    // board - 使用 GetBoardJson() 获取完整 board 信息
+    std::string board_json_str = board.GetBoardJson();
+    if (!board_json_str.empty()) {
+        cJSON* board_obj = cJSON_Parse(board_json_str.c_str());
+        if (board_obj) {
+            cJSON_AddItemToObject(root, "board", board_obj);
+        }
     }
 
-    auto http = SetupHttp();
+    char* json = cJSON_PrintUnformatted(root);
+    std::string result(json);
+    cJSON_free(json);
+    cJSON_Delete(root);
 
-    std::string data = board.GetSystemInfoJson();
-    std::string method = data.length() > 0 ? "POST" : "GET";
-    http->SetContent(std::move(data));
+    return result;
+}
 
-    if (!http->Open(method, url)) {
-        int last_error = http->GetLastError();
-        ESP_LOGE(TAG, "Failed to open HTTP connection, code=0x%x", last_error);
-        return last_error;
-    }
-
-    auto status_code = http->GetStatusCode();
-    if (status_code != 200) {
-        ESP_LOGE(TAG, "Failed to check version, status code: %d", status_code);
-        return status_code;
-    }
-
-    data = http->ReadAll();
-    http->Close();
-
-    // 响应：{ "固件": { "版本": "1.0.0", "地址": "http://" } }
-    // 解析JSON响应并检查版本是否更新
-    // 若版本更新，则将has_new_version_设为true，并存储新版本号与地址
-    
-    cJSON *root = cJSON_Parse(data.c_str());
+esp_err_t Ota::ParseResponse(const std::string& response) {
+    cJSON* root = cJSON_Parse(response.c_str());
     if (root == NULL) {
         ESP_LOGE(TAG, "Failed to parse JSON response");
         return ESP_ERR_INVALID_RESPONSE;
     }
 
+    // 重置状态
     has_activation_code_ = false;
-    has_activation_challenge_ = false;
-    cJSON *activation = cJSON_GetObjectItem(root, "activation");
-    if (cJSON_IsObject(activation)) {
-        cJSON* message = cJSON_GetObjectItem(activation, "message");
-        if (cJSON_IsString(message)) {
-            activation_message_ = message->valuestring;
-        }
-        cJSON* code = cJSON_GetObjectItem(activation, "code");
-        if (cJSON_IsString(code)) {
-            activation_code_ = code->valuestring;
-            has_activation_code_ = true;
-        }
-        cJSON* challenge = cJSON_GetObjectItem(activation, "challenge");
-        if (cJSON_IsString(challenge)) {
-            activation_challenge_ = challenge->valuestring;
-            has_activation_challenge_ = true;
-        }
-        cJSON* timeout_ms = cJSON_GetObjectItem(activation, "timeout_ms");
-        if (cJSON_IsNumber(timeout_ms)) {
-            activation_timeout_ms_ = timeout_ms->valueint;
-        }
+    has_new_version_ = false;
+    has_mqtt_config_ = false;
+    has_websocket_config_ = false;
+    has_server_time_ = false;
+    has_rotated_key_ = false;
+
+    // 1. 解析 device_secret
+    cJSON* device_secret = cJSON_GetObjectItem(root, "device_secret");
+    if (cJSON_IsString(device_secret)) {
+        Settings settings("device", true);
+        settings.SetString("device_key", device_secret->valuestring);
     }
 
-    has_mqtt_config_ = false;
-    cJSON *mqtt = cJSON_GetObjectItem(root, "mqtt");
+    // 2. 解析 mqtt
+    cJSON* mqtt = cJSON_GetObjectItem(root, "mqtt");
     if (cJSON_IsObject(mqtt)) {
         Settings settings("mqtt", true);
-        cJSON *item = NULL;
+        cJSON* item = NULL;
         cJSON_ArrayForEach(item, mqtt) {
             if (cJSON_IsString(item)) {
-                if (settings.GetString(item->string) != item->valuestring) {
-                    settings.SetString(item->string, item->valuestring);
-                }
+                settings.SetString(item->string, item->valuestring);
             } else if (cJSON_IsNumber(item)) {
-                if (settings.GetInt(item->string) != item->valueint) {
-                    settings.SetInt(item->string, item->valueint);
-                }
+                settings.SetInt(item->string, item->valueint);
             }
         }
         has_mqtt_config_ = true;
-    } else {
-        ESP_LOGI(TAG, "No mqtt section found !");
+        ESP_LOGI(TAG, "MQTT config saved");
     }
 
-    has_websocket_config_ = false;
-    cJSON *websocket = cJSON_GetObjectItem(root, "websocket");
+    // 3. 解析 websocket
+    cJSON* websocket = cJSON_GetObjectItem(root, "websocket");
     if (cJSON_IsObject(websocket)) {
         Settings settings("websocket", true);
-        cJSON *item = NULL;
+        cJSON* item = NULL;
         cJSON_ArrayForEach(item, websocket) {
             if (cJSON_IsString(item)) {
-                if (settings.GetString(item->string) != item->valuestring) {
-                    settings.SetString(item->string, item->valuestring);
-                }
+                settings.SetString(item->string, item->valuestring);
             } else if (cJSON_IsNumber(item)) {
-                if (settings.GetInt(item->string) != item->valueint) {
-                    settings.SetInt(item->string, item->valueint);
-                }
+                settings.SetInt(item->string, item->valueint);
             }
         }
         has_websocket_config_ = true;
-    } else {
-        ESP_LOGI(TAG, "No websocket section found!");
+        ESP_LOGI(TAG, "WebSocket config saved");
     }
 
-    has_server_time_ = false;
-    cJSON *server_time = cJSON_GetObjectItem(root, "server_time");
+    // 4. 解析 server_time
+    cJSON* server_time = cJSON_GetObjectItem(root, "server_time");
     if (cJSON_IsObject(server_time)) {
-        cJSON *timestamp = cJSON_GetObjectItem(server_time, "timestamp");
-        cJSON *timezone_offset = cJSON_GetObjectItem(server_time, "timezone_offset");
-        
+        cJSON* timestamp = cJSON_GetObjectItem(server_time, "timestamp");
+        cJSON* timezone_offset = cJSON_GetObjectItem(server_time, "timezone_offset");
+
         if (cJSON_IsNumber(timestamp)) {
-            // 设置系统时间
-            struct timeval tv;
             double ts = timestamp->valuedouble;
-            
-            // 如果有时区偏移，计算本地时间
             if (cJSON_IsNumber(timezone_offset)) {
-                ts += (timezone_offset->valueint * 60 * 1000); // 转换分钟为毫秒
+                ts += (timezone_offset->valueint * 60 * 1000);
             }
-            
-            tv.tv_sec = (time_t)(ts / 1000);  // 转换毫秒为秒
-            tv.tv_usec = (suseconds_t)((long long)ts % 1000) * 1000;  // 剩余的毫秒转换为微秒
+
+            struct timeval tv;
+            tv.tv_sec = (time_t)(ts / 1000);
+            tv.tv_usec = (suseconds_t)((long long)ts % 1000) * 1000;
             settimeofday(&tv, NULL);
             has_server_time_ = true;
+            ESP_LOGI(TAG, "Server time synced");
         }
-    } else {
-        ESP_LOGW(TAG, "No server_time section found!");
     }
 
-    has_new_version_ = false;
-    cJSON *firmware = cJSON_GetObjectItem(root, "firmware");
+    // 5. 解析 firmware
+    cJSON* firmware = cJSON_GetObjectItem(root, "firmware");
     if (cJSON_IsObject(firmware)) {
-        cJSON *version = cJSON_GetObjectItem(firmware, "version");
+        cJSON* version = cJSON_GetObjectItem(firmware, "version");
+        cJSON* url = cJSON_GetObjectItem(firmware, "url");
+        cJSON* rotate_key = cJSON_GetObjectItem(firmware, "rotate_key");
+
         if (cJSON_IsString(version)) {
             firmware_version_ = version->valuestring;
         }
-        cJSON *url = cJSON_GetObjectItem(firmware, "url");
         if (cJSON_IsString(url)) {
-            firmware_url_ = url->valuestring;
+            std::string base_url = GetOtaUrl();
+            firmware_url_ = base_url + url->valuestring;
         }
 
         if (cJSON_IsString(version) && cJSON_IsString(url)) {
-            // Check if the version is newer, for example, 0.1.0 is newer than 0.0.1
             has_new_version_ = IsNewVersionAvailable(current_version_, firmware_version_);
             if (has_new_version_) {
-                ESP_LOGI(TAG, "New version available: %s", firmware_version_.c_str());
-            } else {
-                ESP_LOGI(TAG, "Current is the latest version");
-            }
-            // If the force flag is set to 1, the given version is forced to be installed
-            cJSON *force = cJSON_GetObjectItem(firmware, "force");
-            if (cJSON_IsNumber(force) && force->valueint == 1) {
-                has_new_version_ = true;
+                ESP_LOGI(TAG, "New version: %s -> %s", current_version_.c_str(), firmware_version_.c_str());
             }
         }
-    } else {
-        ESP_LOGW(TAG, "No firmware section found!");
+
+        // 密钥轮换
+        if (cJSON_IsString(rotate_key) && strlen(rotate_key->valuestring) > 0) {
+            rotate_key_ = rotate_key->valuestring;
+            has_rotated_key_ = true;
+            ESP_LOGI(TAG, "Key rotation requested");
+        }
     }
 
     cJSON_Delete(root);
+    return ESP_OK;
+}
+
+// ============ 核心功能 ============
+
+esp_err_t Ota::CheckVersion() {
+    ESP_LOGI(TAG, "CheckVersion enter");
+    auto app_desc = esp_app_get_description();
+    current_version_ = app_desc->version;
+    ESP_LOGI(TAG, "Current version: %s", current_version_.c_str());
+
+    std::string url = GetOtaUrl();
+    ESP_LOGI(TAG, "OTA URL: %s", url.c_str());
+    if (url.length() < 10) {
+        ESP_LOGE(TAG, "OTA URL not set");
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_LOGI(TAG, "BuildRequestBody...");
+    std::string body = BuildRequestBody();
+    ESP_LOGI(TAG, "Body: %s", body.c_str());
+    std::string timestamp = GetTimestamp();
+
+    auto& board = Board::GetInstance();
+    auto network = board.GetNetwork();
+    ESP_LOGI(TAG, "CreateHttp...");
+    auto http = network->CreateHttp(0);
+
+    // 设置请求头
+    http->SetHeader("Device-Id", SystemInfo::GetMacAddress().c_str());
+    http->SetHeader("Client-Id", board.GetUuid());
+    http->SetHeader("User-Agent", SystemInfo::GetUserAgent().c_str());
+    http->SetHeader("X-Timestamp", timestamp.c_str());
+    http->SetHeader("Accept-Language", "zh-CN");
+    http->SetHeader("Content-Type", "application/json");
+
+    // 签名（已激活时）
+    if (HasDeviceSecret()) {
+        std::string signature = CalculateSignature(body, timestamp);
+        ESP_LOGI(TAG, "signature: %s", signature.c_str());
+        if (!signature.empty()) {
+            http->SetHeader("Authorization", ("Bearer " + signature).c_str());
+        }
+    }
+
+    http->SetContent(std::move(body));
+    ESP_LOGI(TAG, "HTTP Open...");
+    if (!http->Open("POST", url)) {
+        ESP_LOGE(TAG, "HTTP request failed");
+        return ESP_FAIL;
+    }
+
+    auto status_code = http->GetStatusCode();
+    ESP_LOGI(TAG, "HTTP status: %d", status_code);
+    if (status_code != 200) {
+        ESP_LOGE(TAG, "OTA request failed, status: %d", status_code);
+        http->Close();
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "ReadAll...");
+    std::string response = http->ReadAll();
+    ESP_LOGI(TAG, "Response len: %d", response.length());
+    http->Close();
+
+    ESP_LOGI(TAG, "ParseResponse...");
+    esp_err_t ret = ParseResponse(response);
+    ESP_LOGI(TAG, "ParseResponse done: %d", ret);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    // 处理密钥轮换
+    if (has_rotated_key_ && !rotate_key_.empty()) {
+        SaveDeviceSecret(rotate_key_);
+        ESP_LOGI(TAG, "Device key rotated");
+    }
+
+    ESP_LOGI(TAG, "CheckVersion return OK");
     return ESP_OK;
 }
 
@@ -230,7 +322,7 @@ void Ota::MarkCurrentVersionValid() {
     ESP_LOGI(TAG, "Running partition: %s", partition->label);
     esp_ota_img_states_t state;
     if (esp_ota_get_state_partition(partition, &state) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to get state of partition");
+        ESP_LOGE(TAG, "Failed to get partition state");
         return;
     }
 
@@ -241,49 +333,51 @@ void Ota::MarkCurrentVersionValid() {
 }
 
 bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback) {
-    ESP_LOGI(TAG, "Upgrading firmware from %s", firmware_url.c_str());
+    ESP_LOGI(TAG, "Upgrading from %s", firmware_url.c_str());
+
     esp_ota_handle_t update_handle = 0;
     auto update_partition = esp_ota_get_next_update_partition(NULL);
     if (update_partition == NULL) {
-        ESP_LOGE(TAG, "Failed to get update partition");
+        ESP_LOGE(TAG, "No update partition");
         return false;
     }
 
-    ESP_LOGI(TAG, "Writing to partition %s at offset 0x%lx", update_partition->label, update_partition->address);
+    ESP_LOGI(TAG, "Writing to partition %s at 0x%lx", update_partition->label, update_partition->address);
     bool image_header_checked = false;
     std::string image_header;
 
     auto network = Board::GetInstance().GetNetwork();
     auto http = network->CreateHttp(0);
     if (!http->Open("GET", firmware_url)) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection");
+        ESP_LOGE(TAG, "Failed to open firmware URL");
         return false;
     }
 
     if (http->GetStatusCode() != 200) {
-        ESP_LOGE(TAG, "Failed to get firmware, status code: %d", http->GetStatusCode());
+        ESP_LOGE(TAG, "Firmware download failed, status: %d", http->GetStatusCode());
         return false;
     }
 
     size_t content_length = http->GetBodyLength();
     if (content_length == 0) {
-        ESP_LOGE(TAG, "Failed to get content length");
+        ESP_LOGE(TAG, "Empty firmware");
         return false;
     }
 
     char buffer[512];
     size_t total_read = 0, recent_read = 0;
     auto last_calc_time = esp_timer_get_time();
+
     while (true) {
         int ret = http->Read(buffer, sizeof(buffer));
         if (ret < 0) {
-            ESP_LOGE(TAG, "Failed to read HTTP data: %s", esp_err_to_name(ret));
+            ESP_LOGE(TAG, "Read error");
             return false;
         }
 
-        // Calculate speed and progress every second
         recent_read += ret;
         total_read += ret;
+
         if (esp_timer_get_time() - last_calc_time >= 1000000 || ret == 0) {
             size_t progress = total_read * 100 / content_length;
             ESP_LOGI(TAG, "Progress: %u%% (%u/%u), Speed: %uB/s", progress, total_read, content_length, recent_read);
@@ -294,32 +388,28 @@ bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progre
             recent_read = 0;
         }
 
-        if (ret == 0) {
-            break;
-        }
+        if (ret == 0) break;
 
         if (!image_header_checked) {
             image_header.append(buffer, ret);
             if (image_header.size() >= sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t) + sizeof(esp_app_desc_t)) {
                 esp_app_desc_t new_app_info;
                 memcpy(&new_app_info, image_header.data() + sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t), sizeof(esp_app_desc_t));
-                
-                auto current_version = esp_app_get_description()->version;
-                ESP_LOGI(TAG, "Current version: %s, New version: %s", current_version, new_app_info.version);
+                ESP_LOGI(TAG, "New firmware version: %s", new_app_info.version);
 
                 if (esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle)) {
                     esp_ota_abort(update_handle);
-                    ESP_LOGE(TAG, "Failed to begin OTA");
+                    ESP_LOGE(TAG, "OTA begin failed");
                     return false;
                 }
-
                 image_header_checked = true;
                 std::string().swap(image_header);
             }
         }
-        auto err = esp_ota_write(update_handle, buffer, ret);
+
+        esp_err_t err = esp_ota_write(update_handle, buffer, ret);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to write OTA data: %s", esp_err_to_name(err));
+            ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
             esp_ota_abort(update_handle);
             return false;
         }
@@ -328,109 +418,52 @@ bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progre
 
     esp_err_t err = esp_ota_end(update_handle);
     if (err != ESP_OK) {
-        if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
-            ESP_LOGE(TAG, "Image validation failed, image is corrupted");
-        } else {
-            ESP_LOGE(TAG, "Failed to end OTA: %s", esp_err_to_name(err));
-        }
+        ESP_LOGE(TAG, "OTA end failed: %s", esp_err_to_name(err));
         return false;
     }
 
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to set boot partition: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Set boot partition failed: %s", esp_err_to_name(err));
         return false;
     }
 
-    ESP_LOGI(TAG, "Firmware upgrade successful");
+    ESP_LOGI(TAG, "Upgrade successful");
     return true;
 }
 
 bool Ota::StartUpgrade(std::function<void(int progress, size_t speed)> callback) {
+    if (firmware_url_.empty()) {
+        ESP_LOGE(TAG, "No firmware URL");
+        return false;
+    }
     return Upgrade(firmware_url_, callback);
 }
 
+// ============ 版本比较 ============
 
 std::vector<int> Ota::ParseVersion(const std::string& version) {
-    std::vector<int> versionNumbers;
+    std::vector<int> numbers;
     std::stringstream ss(version);
     std::string segment;
-    
+
     while (std::getline(ss, segment, '.')) {
-        versionNumbers.push_back(std::stoi(segment));
+        try {
+            numbers.push_back(std::stoi(segment));
+        } catch (...) {
+            numbers.push_back(0);
+        }
     }
-    
-    return versionNumbers;
+    return numbers;
 }
 
 bool Ota::IsNewVersionAvailable(const std::string& currentVersion, const std::string& newVersion) {
     std::vector<int> current = ParseVersion(currentVersion);
     std::vector<int> newer = ParseVersion(newVersion);
-    
+
     for (size_t i = 0; i < std::min(current.size(), newer.size()); ++i) {
-        if (newer[i] > current[i]) {
-            return true;
-        } else if (newer[i] < current[i]) {
-            return false;
-        }
+        if (newer[i] > current[i]) return true;
+        if (newer[i] < current[i]) return false;
     }
-    
     return newer.size() > current.size();
-}
-
-std::string Ota::GetActivationPayload() {
-    if (!has_serial_number_) {
-        return "{}";
-    }
-
-    std::string hmac_hex;
-
-    cJSON *payload = cJSON_CreateObject();
-    cJSON_AddStringToObject(payload, "algorithm", "hmac-sha256");
-    cJSON_AddStringToObject(payload, "serial_number", serial_number_.c_str());
-    cJSON_AddStringToObject(payload, "challenge", activation_challenge_.c_str());
-    cJSON_AddStringToObject(payload, "hmac", hmac_hex.c_str());
-    auto json_str = cJSON_PrintUnformatted(payload);
-    std::string json(json_str);
-    cJSON_free(json_str);
-    cJSON_Delete(payload);
-
-    ESP_LOGI(TAG, "Activation payload: %s", json.c_str());
-    return json;
-}
-
-esp_err_t Ota::Activate() {
-    if (!has_activation_challenge_) {
-        ESP_LOGW(TAG, "No activation challenge found");
-        return ESP_FAIL;
-    }
-
-    std::string url = GetCheckVersionUrl();
-    if (url.back() != '/') {
-        url += "/activate";
-    } else {
-        url += "activate";
-    }
-
-    auto http = SetupHttp();
-
-    std::string data = GetActivationPayload();
-    http->SetContent(std::move(data));
-
-    if (!http->Open("POST", url)) {
-        ESP_LOGE(TAG, "Failed to open HTTP connection");
-        return ESP_FAIL;
-    }
-    
-    auto status_code = http->GetStatusCode();
-    if (status_code == 202) {
-        return ESP_ERR_TIMEOUT;
-    }
-    if (status_code != 200) {
-        ESP_LOGE(TAG, "Failed to activate, code: %d, body: %s", status_code, http->ReadAll().c_str());
-        return ESP_FAIL;
-    }
-
-    ESP_LOGI(TAG, "Activation successful");
-    return ESP_OK;
 }

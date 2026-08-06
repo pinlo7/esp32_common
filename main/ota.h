@@ -1,58 +1,100 @@
-#ifndef _OTA_H
-#define _OTA_H
+#pragma once
+#ifndef _OTA_H_
+#define _OTA_H_
 
-#include <functional>
 #include <string>
-
+#include <functional>
+#include <vector>
 #include <esp_err.h>
-#include "board.h"
 
+/**
+ * OTA 更新管理类
+ *
+ * 实现设备激活、固件版本检查、固件升级和密钥轮换功能。
+ * 签名算法：SHA256(device_key + timestamp + device_id + body_sha256)
+ */
 class Ota {
 public:
     Ota();
     ~Ota();
 
+    /**
+     * 检查固件版本并获取 OTA 响应
+     * @return ESP_OK 成功，其他表示错误
+     */
     esp_err_t CheckVersion();
-    esp_err_t Activate();
-    bool HasActivationChallenge() { return has_activation_challenge_; } // 是否有激活挑战
-    bool HasNewVersion() { return has_new_version_; } // 是否有新版本
-    bool HasMqttConfig() { return has_mqtt_config_; } // 是否有MQTT配置
-    bool HasWebsocketConfig() { return has_websocket_config_; } // 是否有Websocket配置
-    bool HasActivationCode() { return has_activation_code_; }   // 是否有激活码
-    bool HasServerTime() { return has_server_time_; } // 是否有服务器时间
-    bool StartUpgrade(std::function<void(int progress, size_t speed)> callback); // 开始升级
-    static bool Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback); // 升级
-    void MarkCurrentVersionValid(); // 标记当前版本为有效
 
-    const std::string& GetFirmwareVersion() const { return firmware_version_; } // 获取固件版本
-    const std::string& GetCurrentVersion() const { return current_version_; } // 获取当前版本
-    const std::string& GetFirmwareUrl() const { return firmware_url_; } // 获取固件URL
-    const std::string& GetActivationMessage() const { return activation_message_; } // 获取激活消息
-    const std::string& GetActivationCode() const { return activation_code_; } // 获取激活码
-    std::string GetCheckVersionUrl(); // 获取检查版本URL
+    /**
+     * 开始固件升级
+     * @param callback 进度回调 (progress%, speed_bytes_per_sec)
+     * @return true 成功，false 失败
+     */
+    bool StartUpgrade(std::function<void(int progress, size_t speed)> callback);
+
+    /**
+     * 静态方法：执行固件升级
+     * @param firmware_url 固件下载 URL
+     * @param callback 进度回调
+     * @return true 成功，false 失败
+     */
+    static bool Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback);
+
+    /**
+     * 标记当前固件为有效（取消回滚）
+     */
+    void MarkCurrentVersionValid();
+
+    // 状态查询
+    bool HasActivationCode() const { return has_activation_code_; }
+    bool HasNewVersion() const { return has_new_version_; }
+    bool HasMqttConfig() const { return has_mqtt_config_; }
+    bool HasWebsocketConfig() const { return has_websocket_config_; }
+    bool HasServerTime() const { return has_server_time_; }
+    bool HasRotatedKey() const { return has_rotated_key_; }
+
+    // 数据访问
+    const std::string& GetActivationCode() const { return activation_code_; }
+    const std::string& GetActivationMessage() const { return activation_message_; }
+    const std::string& GetFirmwareVersion() const { return firmware_version_; }
+    const std::string& GetFirmwareUrl() const { return firmware_url_; }
+    const std::string& GetCurrentVersion() const { return current_version_; }
 
 private:
-    std::string activation_message_;
-    std::string activation_code_;
+    // NVS 密钥管理
+    std::string GetOtaUrl();
+    std::string GetDeviceSecret();
+    bool SaveDeviceSecret(const std::string& key);
+    bool HasDeviceSecret() const;
+
+    // 签名计算
+    std::string CalculateSignature(const std::string& body_json, const std::string& timestamp);
+    std::string Sha256Hex(const std::string& input);
+    std::string GetTimestamp();
+
+    // HTTP 请求
+    std::string BuildRequestBody();
+    esp_err_t ParseResponse(const std::string& response);
+
+    // 状态标志
+    bool has_activation_code_ = false;
     bool has_new_version_ = false;
     bool has_mqtt_config_ = false;
     bool has_websocket_config_ = false;
     bool has_server_time_ = false;
-    bool has_activation_code_ = false;
-    bool has_serial_number_ = false;
-    bool has_activation_challenge_ = false;
+    bool has_rotated_key_ = false;
+
+    // 数据
+    std::string activation_code_;
+    std::string activation_message_;
     std::string current_version_;
     std::string firmware_version_;
     std::string firmware_url_;
-    std::string activation_challenge_;
-    std::string serial_number_;
-    int activation_timeout_ms_ = 30000;
+    std::string device_key_;  // 从 NVS 加载的设备密钥（hex）
+    std::string rotate_key_;  // OTA 响应下发的新密钥
 
-    std::function<void(int progress, size_t speed)> upgrade_callback_;
+    // 版本比较
     std::vector<int> ParseVersion(const std::string& version);
     bool IsNewVersionAvailable(const std::string& currentVersion, const std::string& newVersion);
-    std::string GetActivationPayload();
-    std::unique_ptr<Http> SetupHttp();
 };
 
-#endif // _OTA_H
+#endif // _OTA_H_

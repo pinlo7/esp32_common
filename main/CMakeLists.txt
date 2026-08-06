@@ -5,6 +5,7 @@ idf_component_register(SRCS "main.cc"
                             "board/wifi_board.cc"
                             "board/my_wifi_pcb_board"
                             "App.cc"
+                            "ota.cc"
                     INCLUDE_DIRS    "."
                                     "board/include"
                                     "common/include")

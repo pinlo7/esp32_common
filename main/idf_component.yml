@@ -14,5 +14,3 @@ dependencies:
   #   # `public` flag doesn't have an effect dependencies of the `main` component.
   #   # All dependencies of `main` are public by default.
   #   public: true
-  78/esp-ml307: ~3.5.3
-  78/esp-wifi-connect: ~3.0.2

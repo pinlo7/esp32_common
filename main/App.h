@@ -6,6 +6,7 @@
 #include <freertos/task.h>
 #include <esp_timer.h>
 #include "board.h"
+#include "ota.h"
 
 #define MAIN_EVENT_CLOCK_TICK           BIT0
 #define MAIN_EVENT_NETWORK              BIT1
@@ -22,10 +23,14 @@ private:
     NetworkState network_state_;
     std::mutex network_mutex_;
     TaskHandle_t activation_task_handle_;
+    std::unique_ptr<Ota> ota_;
 
     void HandleNetworkEvent();
     void HandleNetworkConnectedEvent();
     void ActivationTask();
+    void CheckNewVersion();
+    bool UpgradeFirmware(const std::string& url, const std::string& version);
+
 public:
     static App& GetInstance() {
         static App instance;
