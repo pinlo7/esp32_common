@@ -1,5 +1,6 @@
 # Build output
 build/
+build_old_*/
 managed_components/
 dependencies.lock
 

@@ -178,6 +178,11 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 <div class="error-msg" id="advanced_error"></div>
 
 <div class="form-group">
+<label for="group_key" data-lang="group_key">Group Key</label>
+<input class="form-input" type="text" id="group_key" name="group_key" placeholder="...">
+</div>
+
+<div class="form-group">
 <label for="ota_url" data-lang="ota_url">Custom OTA URL</label>
 <div class="input-row">
 <input class="form-input" type="text" id="ota_url" name="ota_url" placeholder="https://...">
@@ -213,8 +218,8 @@ const ssid=document.getElementById('ssid');
 let support5G=false;
 
 const translations={
-'en-US':{title:'Network Configuration',saved_wifi:'Saved Wi-Fi',new_wifi:'New Wi-Fi',password:'Password',connect:'Connect',connecting:'Connecting...',select_wifi:'Select a 2.4G Wi-Fi from the list below:',select_wifi_5g:'Select a Wi-Fi from the list below:',scanning:'Scanning networks...',wifi_tab:'Wi-Fi Config',advanced_tab:'Advanced',ota_url:'Custom OTA URL',device_secret:'Device Secret',save:'Save',default_badge:'DEFAULT',no_saved:'No saved networks'},
-'zh-CN':{title:'网络配置',saved_wifi:'已保存的 Wi-Fi',new_wifi:'新的 Wi-Fi',password:'密码',connect:'连接',connecting:'正在连接...',select_wifi:'从下面列表选择 2.4G Wi-Fi:',select_wifi_5g:'从下面列表选择 Wi-Fi:',scanning:'正在扫描网络...',wifi_tab:'Wi-Fi 配置',advanced_tab:'高级选项',ota_url:'自定义 OTA 地址',device_secret:'设备密钥',save:'保存',default_badge:'默认',no_saved:'无已保存网络'}
+'en-US':{title:'Network Configuration',saved_wifi:'Saved Wi-Fi',new_wifi:'New Wi-Fi',password:'Password',connect:'Connect',connecting:'Connecting...',select_wifi:'Select a 2.4G Wi-Fi from the list below:',select_wifi_5g:'Select a Wi-Fi from the list below:',scanning:'Scanning networks...',wifi_tab:'Wi-Fi Config',advanced_tab:'Advanced',group_key:'Group Bootstrap Key',ota_url:'Custom OTA URL',device_secret:'Device Secret',save:'Save',default_badge:'DEFAULT',no_saved:'No saved networks'},
+'zh-CN':{title:'网络配置',saved_wifi:'已保存的 Wi-Fi',new_wifi:'新的 Wi-Fi',password:'密码',connect:'连接',connecting:'正在连接...',select_wifi:'从下面列表选择 2.4G Wi-Fi:',select_wifi_5g:'从下面列表选择 Wi-Fi:',scanning:'正在扫描网络...',wifi_tab:'Wi-Fi 配置',advanced_tab:'高级选项',group_key:'组引导密钥',ota_url:'自定义 OTA 地址',device_secret:'设备密钥',save:'保存',default_badge:'默认',no_saved:'无已保存网络'}
 };
 
 const languageMap={'zh':'zh-CN','zh-CN':'zh-CN','zh-TW':'zh-CN','zh-HK':'zh-CN','en':'en-US','en-US':'en-US','en-GB':'en-US','en-CA':'en-US','en-AU':'en-US'};
@@ -307,6 +312,7 @@ btn.disabled=true;
 err.classList.remove('show');
 try{
 const r=await fetch('/advanced/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+group_key:document.getElementById('group_key').value,
 ota_url:document.getElementById('ota_url').value,
 device_secret:document.getElementById('device_secret').value
 })});

@@ -605,6 +605,17 @@ void WifiConfigurationAp::StartWebServer()
                 }
             }
 
+            // 保存组引导密钥（首次激活用，日志不打印明文）
+            cJSON *group_key = cJSON_GetObjectItem(json, "group_key");
+            if (cJSON_IsString(group_key) && group_key->valuestring && strlen(group_key->valuestring) > 0) {
+                err = nvs_set_str(nvs, "group_key", group_key->valuestring);
+                if (err != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to save group key: %d", err);
+                } else {
+                    ESP_LOGI(TAG, "Group bootstrap key saved (len=%d)", strlen(group_key->valuestring));
+                }
+            }
+
             // 保存WiFi功率
             cJSON *max_tx_power = cJSON_GetObjectItem(json, "max_tx_power");
             if (cJSON_IsNumber(max_tx_power)) {

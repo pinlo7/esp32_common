@@ -4,6 +4,7 @@
 #include <cJSON.h>
 #include <esp_log.h>
 #include <system_info.h>
+#include "settings.h"
 
 #define TAG "app"
 
@@ -133,8 +134,31 @@ void App::HandleNetworkConnectedEvent() {
 
 void App::ActivationTask() { 
     ota_ = std::make_unique<Ota>();
+
+    // 未激活且配网时保存了引导密钥：进入首次激活流程
+    if (!ota_->HasDeviceSecret()) {
+        Settings wifi_settings("wifi", false);
+        std::string group_key = wifi_settings.GetString("group_key");
+        if (!group_key.empty()) {
+            ota_->SetProvisionKey(group_key);
+            ESP_LOGI(TAG, "First activation with provision key");
+        } else {
+            ESP_LOGW(TAG, "No device secret and no provision key, activation not possible");
+        }
+    }
+
     CheckNewVersion();
     ESP_LOGI(TAG, "测试....全新版本 %s", ota_->GetCurrentVersion().c_str());
+
+    // 激活/OTA 检查完成后启动 MQTT 服务（升级成功会重启，不会走到这里）
+    if (ota_->HasDeviceSecret() && !mqtt_service_) {
+        mqtt_service_ = std::make_unique<MqttService>();
+        if (mqtt_service_->Start()) {
+            ESP_LOGI(TAG, "MQTT service started");
+        } else {
+            ESP_LOGW(TAG, "MQTT service start failed");
+        }
+    }
 }
 void App::CheckNewVersion() {
     const int MAX_RETRY = 10;

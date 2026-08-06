@@ -18,6 +18,14 @@
 #define TAG "Ota"
 #define CONFIG_OTA_URL "http://192.168.3.185:3001/api/device_manage/ota"
 
+// 提取 URL 的 origin（scheme://host[:port]），用于拼接固件下载地址
+static std::string ExtractOrigin(const std::string& url) {
+    auto scheme_end = url.find("://");
+    if (scheme_end == std::string::npos) return "";
+    auto path_start = url.find('/', scheme_end + 3);
+    return url.substr(0, path_start == std::string::npos ? url.length() : path_start);
+}
+
 Ota::Ota() {
     // device_key_ = "test_secret";
     device_key_ = GetDeviceSecret();
@@ -78,7 +86,9 @@ std::string Ota::GetTimestamp() {
 }
 
 std::string Ota::CalculateSignature(const std::string& body_json, const std::string& timestamp) {
-    if (!HasDeviceSecret()) {
+    // 激活阶段用引导密钥签名；已激活后用 device_secret 签名
+    const std::string& secret = HasProvisionKey() ? provision_key_ : device_key_;
+    if (secret.empty()) {
         return "";
     }
 
@@ -87,7 +97,7 @@ std::string Ota::CalculateSignature(const std::string& body_json, const std::str
 
     // 2. 拼接签名原文: device_key + timestamp + device_id + body_sha256
     std::string device_id = SystemInfo::GetMacAddress();
-    std::string text = device_key_ + timestamp + device_id + body_hash;
+    std::string text = secret + timestamp + device_id + body_hash;
 
     // 3. 计算签名
     return Sha256Hex(text);
@@ -144,6 +154,10 @@ esp_err_t Ota::ParseResponse(const std::string& response) {
     if (cJSON_IsString(device_secret)) {
         Settings settings("device", true);
         settings.SetString("device_key", device_secret->valuestring);
+        device_key_ = device_secret->valuestring;
+        // 激活成功，清除引导密钥（仅激活阶段使用）
+        ClearProvisionKey();
+        ESP_LOGI(TAG, "Activation success, device secret saved");
     }
 
     // 2. 解析 mqtt
@@ -210,8 +224,13 @@ esp_err_t Ota::ParseResponse(const std::string& response) {
             firmware_version_ = version->valuestring;
         }
         if (cJSON_IsString(url)) {
-            std::string base_url = GetOtaUrl();
-            firmware_url_ = base_url + url->valuestring;
+            // 服务器返回的是相对路径（如 /firmware/1.0.0.bin），拼接 OTA 地址的 origin
+            std::string origin = ExtractOrigin(GetOtaUrl());
+            if (!origin.empty() && url->valuestring[0] == '/') {
+                firmware_url_ = origin + url->valuestring;
+            } else {
+                firmware_url_ = url->valuestring;
+            }
         }
 
         if (cJSON_IsString(version) && cJSON_IsString(url)) {
@@ -266,10 +285,13 @@ esp_err_t Ota::CheckVersion() {
     http->SetHeader("Accept-Language", "zh-CN");
     http->SetHeader("Content-Type", "application/json");
 
-    // 签名（已激活时）
-    if (HasDeviceSecret()) {
+    // 首次激活：携带引导密钥并以该密钥签名；已激活：以 device_secret 签名
+    if (HasProvisionKey()) {
+        ESP_LOGI(TAG, "Activation request with provision key");
+        http->SetHeader("X-Provision-Key", provision_key_.c_str());
+    }
+    if (HasDeviceSecret() || HasProvisionKey()) {
         std::string signature = CalculateSignature(body, timestamp);
-        ESP_LOGI(TAG, "signature: %s", signature.c_str());
         if (!signature.empty()) {
             http->SetHeader("Authorization", ("Bearer " + signature).c_str());
         }

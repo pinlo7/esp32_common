@@ -19,6 +19,14 @@ public:
     ~Ota();
 
     /**
+     * 设置首次激活引导密钥（group_key）。
+     * 设备尚未激活（无 device_secret）时，OTA 请求使用该密钥签名并携带 X-Provision-Key。
+     */
+    void SetProvisionKey(const std::string& key) { provision_key_ = key; }
+    bool HasProvisionKey() const { return !provision_key_.empty(); }
+    void ClearProvisionKey() { provision_key_.clear(); }
+
+    /**
      * 检查固件版本并获取 OTA 响应
      * @return ESP_OK 成功，其他表示错误
      */
@@ -51,6 +59,7 @@ public:
     bool HasWebsocketConfig() const { return has_websocket_config_; }
     bool HasServerTime() const { return has_server_time_; }
     bool HasRotatedKey() const { return has_rotated_key_; }
+    bool HasDeviceSecret() const;
 
     // 数据访问
     const std::string& GetActivationCode() const { return activation_code_; }
@@ -64,7 +73,6 @@ private:
     std::string GetOtaUrl();
     std::string GetDeviceSecret();
     bool SaveDeviceSecret(const std::string& key);
-    bool HasDeviceSecret() const;
 
     // 签名计算
     std::string CalculateSignature(const std::string& body_json, const std::string& timestamp);
@@ -91,6 +99,7 @@ private:
     std::string firmware_url_;
     std::string device_key_;  // 从 NVS 加载的设备密钥（hex）
     std::string rotate_key_;  // OTA 响应下发的新密钥
+    std::string provision_key_;  // 首次激活引导密钥（仅激活阶段使用，激活成功后清除）
 
     // 版本比较
     std::vector<int> ParseVersion(const std::string& version);

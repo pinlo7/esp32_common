@@ -7,6 +7,7 @@
 #include <esp_timer.h>
 #include "board.h"
 #include "ota.h"
+#include "mqtt_service.h"
 
 #define MAIN_EVENT_CLOCK_TICK           BIT0
 #define MAIN_EVENT_NETWORK              BIT1
@@ -24,6 +25,7 @@ private:
     std::mutex network_mutex_;
     TaskHandle_t activation_task_handle_;
     std::unique_ptr<Ota> ota_;
+    std::unique_ptr<MqttService> mqtt_service_;
 
     void HandleNetworkEvent();
     void HandleNetworkConnectedEvent();
