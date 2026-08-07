@@ -154,7 +154,7 @@ void App::ActivationTask() {
     }
 
     CheckNewVersion();
-    ESP_LOGI(TAG, "测试....全新版本 %s", ota_->GetCurrentVersion().c_str());
+    ESP_LOGI(TAG, "当前版本 %s", ota_->GetCurrentVersion().c_str());
 
     // 激活/OTA 检查完成后启动 MQTT 服务（升级成功会重启，不会走到这里）
     if (ota_->HasDeviceSecret() && !mqtt_service_) {
@@ -213,6 +213,19 @@ void App::UpgradeByCommand(bool force) {
                 return;
             }
 
+            // 服务器没有可下载固件（如型号不匹配或未上传）时明确失败，避免空 URL 下载
+            std::string firmware_url = app->ota_->GetFirmwareUrl();
+            if (firmware_url.empty()) {
+                ESP_LOGE(TAG, "Upgrade command: no firmware available on server");
+                if (app->mqtt_service_) {
+                    app->mqtt_service_->PublishEvent(
+                        R"({"event":"upgrade_failed","message":"no firmware available"})");
+                }
+                delete a;
+                vTaskDelete(NULL);
+                return;
+            }
+
             // 上报升级开始 + 打持久化标记（新固件启动后据此上报升级完成）
             if (app->mqtt_service_) {
                 std::string event = std::string(R"({"event":"upgrade_started","version":")")
@@ -222,8 +235,7 @@ void App::UpgradeByCommand(bool force) {
             Settings upgrade_mark("device", true);
             upgrade_mark.SetString("upgrade_pending", "1");
 
-            bool ok = app->UpgradeFirmware(app->ota_->GetFirmwareUrl(),
-                                           app->ota_->GetFirmwareVersion());
+            bool ok = app->UpgradeFirmware(firmware_url, app->ota_->GetFirmwareVersion());
             if (!ok && app->mqtt_service_) {
                 app->mqtt_service_->PublishEvent(
                     R"({"event":"upgrade_failed","message":"upgrade failed"})");
