@@ -158,7 +158,7 @@ void App::ActivationTask() {
 
     // 激活/OTA 检查完成后启动 MQTT 服务（升级成功会重启，不会走到这里）
     if (ota_->HasDeviceSecret() && !mqtt_service_) {
-        mqtt_service_ = std::make_unique<MqttService>();
+        mqtt_service_ = std::make_unique<DeviceMqtt>();
         mqtt_service_->SetOnUpgradeRequested([this](bool force) { UpgradeByCommand(force); });
         if (mqtt_service_->Start()) {
             ESP_LOGI(TAG, "MQTT service started");

@@ -18,6 +18,7 @@ idf_component_register(
         "src/esp/esp_tcp.cc"
         "src/esp/esp_mqtt.cc"
         "src/esp/esp_udp.cc"
+        "src/mqtt_service.cc"
         "src/web_socket.cc"
         "src/http_client.cc"
     INCLUDE_DIRS
