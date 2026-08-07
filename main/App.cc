@@ -6,6 +6,7 @@
 #include <system_info.h>
 #include "settings.h"
 #include <esp_sntp.h>
+#include <esp_app_desc.h>
 #include <time.h>
 
 #define TAG "app"
@@ -161,6 +162,18 @@ void App::ActivationTask() {
         mqtt_service_->SetOnUpgradeRequested([this](bool force) { UpgradeByCommand(force); });
         if (mqtt_service_->Start()) {
             ESP_LOGI(TAG, "MQTT service started");
+
+            // 升级后首次启动：上报升级完成并清除标记
+            Settings device_settings("device", false);
+            if (!device_settings.GetString("upgrade_pending").empty()) {
+                auto app_desc = esp_app_get_description();
+                std::string event = std::string(R"({"event":"upgrade_completed","version":")")
+                                   + app_desc->version + "\"}";
+                mqtt_service_->PublishEvent(event);
+                Settings device_rw("device", true);
+                device_rw.EraseKey("upgrade_pending");
+                ESP_LOGI(TAG, "Upgrade completed reported (version=%s)", app_desc->version);
+            }
         } else {
             ESP_LOGW(TAG, "MQTT service start failed");
         }
@@ -200,12 +213,23 @@ void App::UpgradeByCommand(bool force) {
                 return;
             }
 
+            // 上报升级开始 + 打持久化标记（新固件启动后据此上报升级完成）
+            if (app->mqtt_service_) {
+                std::string event = std::string(R"({"event":"upgrade_started","version":")")
+                                   + app->ota_->GetFirmwareVersion() + "\"}";
+                app->mqtt_service_->PublishEvent(event);
+            }
+            Settings upgrade_mark("device", true);
+            upgrade_mark.SetString("upgrade_pending", "1");
+
             bool ok = app->UpgradeFirmware(app->ota_->GetFirmwareUrl(),
                                            app->ota_->GetFirmwareVersion());
             if (!ok && app->mqtt_service_) {
                 app->mqtt_service_->PublishEvent(
                     R"({"event":"upgrade_failed","message":"upgrade failed"})");
             }
+            // 升级失败：清除标记，设备继续正常运行（升级成功会重启，不会走到这里）
+            upgrade_mark.EraseKey("upgrade_pending");
             delete a;
             vTaskDelete(NULL);
         },
