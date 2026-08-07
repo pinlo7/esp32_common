@@ -33,6 +33,7 @@ private:
     void SyncTime();
     void CheckNewVersion();
     bool UpgradeFirmware(const std::string& url, const std::string& version);
+    void UpgradeByCommand(bool force);
 
 public:
     static App& GetInstance() {

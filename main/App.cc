@@ -158,12 +158,58 @@ void App::ActivationTask() {
     // 激活/OTA 检查完成后启动 MQTT 服务（升级成功会重启，不会走到这里）
     if (ota_->HasDeviceSecret() && !mqtt_service_) {
         mqtt_service_ = std::make_unique<MqttService>();
+        mqtt_service_->SetOnUpgradeRequested([this](bool force) { UpgradeByCommand(force); });
         if (mqtt_service_->Start()) {
             ESP_LOGI(TAG, "MQTT service started");
         } else {
             ESP_LOGW(TAG, "MQTT service start failed");
         }
     }
+}
+
+void App::UpgradeByCommand(bool force) {
+    ESP_LOGI(TAG, "Upgrade command received (force=%d), starting in dedicated task", force ? 1 : 0);
+
+    // 在独立任务中执行，避免阻塞 MQTT 事件回调（CheckVersion/下载都会耗时）
+    struct UpgradeCmdArg {
+        App* app;
+        bool force;
+    };
+    auto* arg = new UpgradeCmdArg{this, force};
+    xTaskCreate(
+        [](void* arg) {
+            auto* a = static_cast<UpgradeCmdArg*>(arg);
+            auto* app = a->app;
+
+            esp_err_t err = app->ota_->CheckVersion();
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "Upgrade command: CheckVersion failed");
+                if (app->mqtt_service_) {
+                    app->mqtt_service_->PublishEvent(
+                        R"({"event":"upgrade_failed","message":"check version failed"})");
+                }
+                vTaskDelete(NULL);
+                delete a;
+                return;
+            }
+
+            if (!app->ota_->HasNewVersion() && !a->force) {
+                ESP_LOGI(TAG, "Upgrade command: already up to date");
+                delete a;
+                vTaskDelete(NULL);
+                return;
+            }
+
+            bool ok = app->UpgradeFirmware(app->ota_->GetFirmwareUrl(),
+                                           app->ota_->GetFirmwareVersion());
+            if (!ok && app->mqtt_service_) {
+                app->mqtt_service_->PublishEvent(
+                    R"({"event":"upgrade_failed","message":"upgrade failed"})");
+            }
+            delete a;
+            vTaskDelete(NULL);
+        },
+        "upgrade_cmd", 4096 * 4, arg, 3, nullptr);
 }
 
 void App::SyncTime() {

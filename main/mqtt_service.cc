@@ -137,7 +137,8 @@ void MqttService::ConnectLoop() {
                 continue;
             }
         }
-
+        ESP_LOGI(TAG, "MQTT task stack high water: %u",
+        uxTaskGetStackHighWaterMark(task_handle_));
         // 心跳：定期上报状态
         if (connected_) {
             PublishStatus(BuildStatusJson());
@@ -244,6 +245,19 @@ void MqttService::HandleCommand(const std::string& topic, const std::string& pay
         ESP_LOGI(TAG, "Rebooting in 500ms...");
         vTaskDelay(pdMS_TO_TICKS(500));
         esp_restart();
+    } else if (command_str == "upgrade") {
+        // 升级是长操作（下载可能几分钟），先回 ACK，再交给 App 在独立任务中执行
+        bool force = false;
+        cJSON* params = cJSON_GetObjectItem(root, "params");
+        cJSON* force_item = params ? cJSON_GetObjectItem(params, "force") : NULL;
+        if (cJSON_IsBool(force_item)) {
+            force = cJSON_IsTrue(force_item);
+        }
+        SendCommandAck(request_id_str, true, "");
+        ESP_LOGI(TAG, "Upgrade command received (force=%d), dispatching", force ? 1 : 0);
+        if (on_upgrade_requested_) {
+            on_upgrade_requested_(force);
+        }
     } else if (command_str == "lock" || command_str == "unlock") {
         // TODO: 接入实际锁定/解锁硬件逻辑
         ESP_LOGI(TAG, "Command %s executed (no hardware action bound yet)", command_str.c_str());

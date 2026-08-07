@@ -4,6 +4,7 @@
 
 #include <string>
 #include <memory>
+#include <functional>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include "mqtt.h"
@@ -26,6 +27,11 @@ public:
     /** 停止服务并断开连接 */
     void Stop();
 
+    /** 设置升级命令回调（收到 command=upgrade 时触发，参数 force 是否强制升级） */
+    void SetOnUpgradeRequested(std::function<void(bool force)> callback) {
+        on_upgrade_requested_ = std::move(callback);
+    }
+
     // 上报接口
     bool PublishStatus(const std::string& json);
     bool PublishEvent(const std::string& json);
@@ -45,6 +51,7 @@ private:
     TaskHandle_t task_handle_ = nullptr;
     std::unique_ptr<Mqtt> mqtt_;
     bool connected_ = false;
+    std::function<void(bool force)> on_upgrade_requested_;
 
     bool LoadConfig();
     static std::string DeriveMqttPassword(const std::string& device_secret);
