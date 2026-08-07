@@ -5,6 +5,8 @@
 #include <esp_log.h>
 #include <system_info.h>
 #include "settings.h"
+#include <esp_sntp.h>
+#include <time.h>
 
 #define TAG "app"
 
@@ -135,6 +137,9 @@ void App::HandleNetworkConnectedEvent() {
 void App::ActivationTask() { 
     ota_ = std::make_unique<Ota>();
 
+    // 首次激活前必须先同步系统时间：服务器对 OTA 请求做时间戳校验（±300s）
+    SyncTime();
+
     // 未激活且配网时保存了引导密钥：进入首次激活流程
     if (!ota_->HasDeviceSecret()) {
         Settings wifi_settings("wifi", false);
@@ -160,6 +165,33 @@ void App::ActivationTask() {
         }
     }
 }
+
+void App::SyncTime() {
+    ESP_LOGI(TAG, "Syncing system time via SNTP...");
+    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "ntp.aliyun.com");
+    esp_sntp_init();
+
+    // 等待同步成功（最多 20 秒）；以时间超过 2020 年作为成功判据
+    int waited_ms = 0;
+    while (waited_ms < 20000) {
+        time_t now = 0;
+        time(&now);
+        if (now > 1600000000) {
+            struct tm tm_info;
+            localtime_r(&now, &tm_info);
+            char buf[32];
+            strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_info);
+            ESP_LOGI(TAG, "Time synced: %s", buf);
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+        waited_ms += 100;
+    }
+    ESP_LOGW(TAG, "SNTP sync timeout, continue with system time");
+}
+
 void App::CheckNewVersion() {
     const int MAX_RETRY = 10;
     int retry_count = 0;
