@@ -3,9 +3,10 @@
 OTA 测试服务器（模拟生产后端 /api/device_manage/ota）
 
 与生产后端行为对齐：
-- 首次激活：必须携带 X-Provision-Key（组密钥）+ Authorization: Bearer 签名，
-  服务端用组密钥验签，**不校验时间戳**（设备时钟尚未同步，首次激活会拿到 server_time 校时）
-- 已注册设备：用 device_secret 验签，并校验时间戳 ±TIMESTAMP_TOLERANCE 秒
+- 首次激活：必须携带 X-Provision-Key（组密钥）+ Authorization: Bearer 签名，服务端用组密钥验签
+- 已注册设备：用 device_secret 验签
+- **不校验时间戳新鲜度**（设备冷启动时钟可能未同步，时间由 OTA 响应的 server_time 校准）；
+  时间戳仍参与签名原文，防伪造
 - 响应结构与生产一致：device_secret / mqtt / websocket / server_time / firmware
 - 签名算法：SHA256(密钥 + 时间戳 + device_id + SHA256(body))
 
@@ -14,7 +15,6 @@ OTA 测试服务器（模拟生产后端 /api/device_manage/ota）
 
 环境变量:
     PROVISION_KEYS         逗号分隔的组密钥（默认 test-provision-key）
-    TIMESTAMP_TOLERANCE    时间戳容差秒（默认 300）
     MQTT_ENDPOINT          返回给设备的 MQTT 地址（默认 mqtt://localhost:1883）
     WEBSOCKET_URL          返回给设备的 WebSocket 地址（默认 wss://api.example.com/ws/）
     DEVICES_FILE           设备记录持久化文件（默认不持久化，仅内存）
@@ -45,7 +45,6 @@ DEFAULT_PORT = 8080
 FIRMWARE_DIR = Path(__file__).parent / "firmware"
 
 PROVISION_KEYS = [k.strip() for k in os.environ.get("PROVISION_KEYS", "test-provision-key").split(",") if k.strip()]
-TIMESTAMP_TOLERANCE = int(os.environ.get("TIMESTAMP_TOLERANCE", "300"))
 MQTT_ENDPOINT = os.environ.get("MQTT_ENDPOINT", "mqtt://localhost:1883")
 WEBSOCKET_URL = os.environ.get("WEBSOCKET_URL", "wss://api.example.com/ws/")
 DEVICES_FILE = os.environ.get("DEVICES_FILE", "") or None
@@ -91,16 +90,9 @@ def is_newer_version(latest, current):
 # ─── 签名 / 认证 ────────────────────────────────────────────────
 
 
-def verify_signature(secret, timestamp, device_id, body_json, signature, check_timestamp=True):
-    """与生产后端 verifySignature 一致：SHA256(secret + timestamp + device_id + SHA256(body))"""
-    if check_timestamp:
-        if not re.fullmatch(r"\d{10}", timestamp or ""):
-            return False
-        try:
-            if abs(int(time.time()) - int(timestamp)) > TIMESTAMP_TOLERANCE:
-                return False
-        except ValueError:
-            return False
+def verify_signature(secret, timestamp, device_id, body_json, signature):
+    """与生产后端 verifySignature 一致：SHA256(secret + timestamp + device_id + SHA256(body))
+    不做时间戳新鲜度校验（设备冷启动时钟可能未同步，时间由 server_time 校准）"""
     body_hash = hashlib.sha256(body_json.encode("utf-8")).hexdigest()
     expected = hashlib.sha256((secret + timestamp + device_id + body_hash).encode("utf-8")).hexdigest()
     return hmac.compare_digest(expected, signature or "")
@@ -326,7 +318,7 @@ class OtaHandler(BaseHTTPRequestHandler):
             if provision_key not in PROVISION_KEYS:
                 return self.send_json(401, {"error": "invalid or disabled provision key"})
             signature = auth[7:]
-            if not verify_signature(provision_key, timestamp, device_id, body_json, signature, check_timestamp=False):
+            if not verify_signature(provision_key, timestamp, device_id, body_json, signature):
                 return self.send_json(401, {"error": "provision signature invalid"})
 
             device_secret = secrets.token_hex(32)
@@ -354,7 +346,7 @@ class OtaHandler(BaseHTTPRequestHandler):
         if not auth.startswith("Bearer "):
             return self.send_json(401, {"error": "missing authorization"})
         signature = auth[7:]
-        if not verify_signature(device["device_secret"], timestamp, device_id, body_json, signature, check_timestamp=True):
+        if not verify_signature(device["device_secret"], timestamp, device_id, body_json, signature):
             return self.send_json(401, {"error": "signature invalid"})
 
         device.update({

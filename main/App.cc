@@ -5,7 +5,6 @@
 #include <esp_log.h>
 #include <system_info.h>
 #include "settings.h"
-#include <esp_sntp.h>
 #include <esp_app_desc.h>
 #include <time.h>
 
@@ -39,12 +38,6 @@ void App::Initialize() {
     // Initialize and run the application
     auto &board = Board::GetInstance();
 
-    // 初始化 SNTP 校时：断电重启后系统时钟会回到 1970，
-    // 而已注册设备的 OTA 验签会校验时间戳（±300s），必须先校时再发 OTA 请求
-    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_init();
-
     board.SetNetworkEventCallback(
         [this](NetworkEvent event, const std::string &data) {
             std::lock_guard<std::mutex> lock(network_mutex_);
@@ -66,31 +59,6 @@ void App::Run() {
         if (bits & MAIN_EVENT_NETWORK) {
             HandleNetworkEvent();
         }
-    }
-}
-
-// 判断系统时间是否已同步（早于 2024 视为未同步，冷启动时是 1970）
-static bool IsTimeSynced() {
-    time_t now;
-    time(&now);
-    return now >= 1704067200;  // 2024-01-01 00:00:00 UTC
-}
-
-// 等待 SNTP 校时完成，最多等待 timeout_ms；超时后继续（由 OTA 重试兜底）
-static void WaitForTimeSync(uint32_t timeout_ms) {
-    if (IsTimeSynced()) {
-        return;
-    }
-    ESP_LOGI(TAG, "Waiting for time sync (SNTP)...");
-    uint32_t waited_ms = 0;
-    while (waited_ms < timeout_ms && !IsTimeSynced()) {
-        vTaskDelay(pdMS_TO_TICKS(200));
-        waited_ms += 200;
-    }
-    if (IsTimeSynced()) {
-        SystemInfo::PrintSystemDateTime();
-    } else {
-        ESP_LOGW(TAG, "Time sync timeout after %u ms, continuing with unsynced clock", timeout_ms);
     }
 }
 
@@ -305,9 +273,6 @@ void App::CheckNewVersion() {
     int retry_count = 0;
     int retry_delay = 10; // Initial retry delay in seconds
     auto &board = Board::GetInstance();
-    SystemInfo::PrintSystemDateTime();
-    // 等 SNTP 校时，避免已注册设备因时钟未同步被服务器时间戳校验拒绝（401）
-    WaitForTimeSync(15000);
     SystemInfo::PrintSystemDateTime();
     while (true) {
         // auto display = board.GetDisplay();
