@@ -48,7 +48,7 @@
 
 ```bash
 # 激活 ESP-IDF 环境（本机）
-source /home/liu/.espressif/tools/activate_idf_v6.0.2.sh
+source $HOME/.espressif/tools/activate_idf_v6.0.2.sh
 
 # 设置目标芯片（首次或切换芯片时）
 idf.py set-target esp32s3
@@ -119,7 +119,7 @@ idf.py -p /dev/ttyACM0 flash monitor
 | `device/{mac}/command_ack` | 设备 → 服务器 | 命令应答 |
 | `device/{mac}/location` | 设备 → 服务器 | 位置上报 |
 
-`{mac}` 为设备 MAC 地址（如 `b4:3a:45:a3:3c:f0`）。
+`{mac}` 为设备 MAC 地址（如 `11:22:33:44:55:66`）。
 
 ## 测试服务器
 

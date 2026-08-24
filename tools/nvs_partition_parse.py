@@ -18,7 +18,13 @@ import subprocess
 import sys
 import tempfile
 
-IDF_PATH = os.environ.get("IDF_PATH", "/home/liu/.espressif/v6.0.2/esp-idf")
+IDF_PATH = os.environ.get("IDF_PATH", "")
+if not IDF_PATH:
+    print(
+        "IDF_PATH 未设置：请先激活 ESP-IDF 环境（如 source $HOME/.espressif/tools/activate_idf_v6.0.2.sh）",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 NVS_TOOL = os.path.join(
     IDF_PATH, "components", "nvs_flash", "nvs_partition_tool", "nvs_tool.py"
 )
@@ -39,7 +45,7 @@ TEST_CSV = """key,type,encoding,value
 device,namespace,,
 device_key,data,string,0123456789abcdef0123456789abcdef
 wifi,namespace,,
-ota_url,data,string,http://192.168.3.185:3001/api/device_manage/ota
+ota_url,data,string,http://127.0.0.1:3001/api/device_manage/ota
 group_key,data,string,test-group-key
 ssid,data,string,MyWiFi
 password,data,string,secret123
@@ -56,8 +62,10 @@ token,data,string,test-token-123
 
 def python():
     """优先使用 ESP-IDF 的 venv python，否则用当前解释器。"""
-    venv = "/home/liu/.espressif/tools/python/v6.0.2/venv/bin/python"
-    return venv if os.path.exists(venv) else sys.executable
+    env_py = os.environ.get("IDF_PYTHON_ENV_PATH", "")
+    if env_py:
+        return os.path.join(env_py, "bin", "python")
+    return sys.executable
 
 
 def run(cmd):

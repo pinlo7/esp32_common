@@ -10,4 +10,4 @@
 - 默认目标芯片：esp32s3n16r8（参考 `sdkconfig.defaults.esp32s3`）
 - 编译工具：`idf.py`
 - 激活方式（Linux shell）：先执行
-  `source /home/liu/.espressif/tools/activate_idf_v6.0.2.sh`，然后 `idf.py build`
+  `source $HOME/.espressif/tools/activate_idf_v6.0.2.sh`，然后 `idf.py build`
