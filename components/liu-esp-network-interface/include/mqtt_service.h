@@ -52,6 +52,9 @@ public:
     void Stop();
     bool IsConnected() const;
 
+    /** 通知网络已恢复：重置重连退避并立即重试连接（若当前未连接） */
+    void NotifyNetworkAvailable();
+
     /** 注册订阅：连接建立/重连后自动订阅；收到消息按 topic 匹配分发到 handler */
     bool Subscribe(const std::string& topic_filter, int qos,
                    std::function<void(const std::string& topic, const std::string& payload)> handler);
@@ -78,6 +81,7 @@ private:
     TaskHandle_t task_handle_ = nullptr;
     std::unique_ptr<Mqtt> mqtt_;
     bool connected_ = false;
+    int retry_delay_sec_ = 1;  // 重连退避（秒），网络恢复通知时重置
     mutable std::mutex mutex_;
 
     std::function<std::unique_ptr<Mqtt>()> mqtt_factory_;

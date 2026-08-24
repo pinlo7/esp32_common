@@ -75,6 +75,18 @@ bool MqttService::TryConnect() {
     return true;
 }
 
+void MqttService::NotifyNetworkAvailable() {
+    TaskHandle_t task = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        retry_delay_sec_ = 1;
+        task = task_handle_;
+    }
+    if (task != nullptr) {
+        xTaskNotifyGive(task);
+    }
+}
+
 void MqttService::OnConnected() {
     ESP_LOGI(TAG, "MQTT connected");
     std::lock_guard<std::mutex> lock(mutex_);
@@ -90,25 +102,31 @@ void MqttService::OnConnected() {
 
 void MqttService::ConnectLoop() {
     static constexpr int kMaxReconnectDelaySec = 60;
-    int retry_delay_sec = 1;
     int heartbeat_elapsed_ms = 0;
 
     while (run_) {
         bool connected = false;
+        int retry_delay_sec = 1;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             connected = connected_;
+            retry_delay_sec = retry_delay_sec_;
         }
 
         if (!connected) {
             if (TryConnect()) {
-                retry_delay_sec = 1;
+                std::lock_guard<std::mutex> lock(mutex_);
+                retry_delay_sec_ = 1;
             } else {
                 ESP_LOGW(TAG, "MQTT connect failed, retry in %ds", retry_delay_sec);
                 for (int i = 0; i < retry_delay_sec && run_; i++) {
-                    vTaskDelay(pdMS_TO_TICKS(1000));
+                    // 网络恢复通知（NotifyNetworkAvailable）可随时唤醒，立即重试
+                    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
                 }
-                retry_delay_sec = std::min(retry_delay_sec * 2, kMaxReconnectDelaySec);
+                {
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    retry_delay_sec_ = std::min(retry_delay_sec * 2, kMaxReconnectDelaySec);
+                }
                 continue;
             }
         }
@@ -129,7 +147,8 @@ void MqttService::ConnectLoop() {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        // 等待 1s；网络恢复通知（NotifyNetworkAvailable）可立即唤醒
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
     }
 }
 

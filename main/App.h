@@ -23,6 +23,7 @@ private:
     //网络状态 保存最新的状态,通知后在主任务中执行,避免在网络事件回调中执行
     NetworkState network_state_;
     std::mutex network_mutex_;
+    bool network_online_ = false;  // 当前是否在线（Connected/Disconnected 事件维护）
     TaskHandle_t activation_task_handle_;
     std::unique_ptr<Ota> ota_;
     std::unique_ptr<DeviceMqtt> mqtt_service_;

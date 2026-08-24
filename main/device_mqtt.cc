@@ -20,6 +20,10 @@ DeviceMqtt::~DeviceMqtt() {
 void DeviceMqtt::SetMqttFactory(std::function<std::unique_ptr<Mqtt>()> factory) {
     mqtt_service_->SetMqttFactory(std::move(factory));
 }
+
+void DeviceMqtt::NotifyNetworkAvailable() {
+    mqtt_service_->NotifyNetworkAvailable();
+}
 // ============ NVS 配置加载 ============
 
 bool DeviceMqtt::LoadConfig() {

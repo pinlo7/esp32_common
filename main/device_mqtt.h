@@ -49,6 +49,9 @@ public:
     /** 升级命令回调（收到 command=upgrade 时触发，参数 force 是否强制升级） */
     void SetOnUpgradeRequested(std::function<void(bool force)> callback);
 
+    /** 通知网络已恢复：转发给 MqttService，重置重连退避并立即重试 */
+    void NotifyNetworkAvailable();
+
     // 上报接口
     bool PublishStatus(const std::string& json);
     bool PublishEvent(const std::string& json);
