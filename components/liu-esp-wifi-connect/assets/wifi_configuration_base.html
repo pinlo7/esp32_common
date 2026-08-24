@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Network Configuration</title>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="referrer no-referrer">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#0F172A;--surface:#1E293B;--surface-hover:#273548;--muted:#272F42;
+--border:#334155;--border-light:#475569;
+--fg:#F8FAFC;--fg-muted:#94A3B8;--fg-dim:#64748B;
+--accent:#22C55E;--accent-hover:#16A34A;--accent-glow:rgba(34,197,94,.15);
+--danger:#EF4444;--danger-hover:#DC2626;
+--radius:12px;--radius-sm:8px;--radius-xs:6px;
+--transition:200ms ease;
+}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;line-height:1.5;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.page{max-width:480px;margin:0 auto;padding:16px;padding-top:56px}
+
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.header h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.lang-select{background:var(--surface);color:var(--fg-muted);border:1px solid var(--border);border-radius:var(--radius-xs);padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;min-height:36px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394A3B8'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:28px}
+.lang-select:focus{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Tabs */
+.tabs{display:flex;gap:4px;background:var(--surface);border-radius:var(--radius);padding:4px;margin-bottom:20px}
+.tab{flex:1;padding:10px 16px;text-align:center;font-size:14px;font-weight:500;color:var(--fg-dim);border-radius:var(--radius-sm);cursor:pointer;transition:all var(--transition);min-height:44px;display:flex;align-items:center;justify-content:center;user-select:none}
+.tab:hover{color:var(--fg-muted)}
+.tab.active{background:var(--accent);color:#fff;font-weight:600}
+
+/* Card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.card-title{font-size:16px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card-title svg{width:20px;height:20px;color:var(--accent);flex-shrink:0}
+
+/* Saved list */
+.saved-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-sm);transition:background var(--transition)}
+.saved-item:hover{background:var(--surface-hover)}
+.saved-item .ssid-name{font-size:14px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.saved-item .ssid-badge{font-size:11px;color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:1px 6px;margin-left:8px;flex-shrink:0}
+.saved-actions{display:flex;gap:4px;flex-shrink:0;margin-left:8px}
+.saved-actions button{width:36px;height:36px;border:none;border-radius:var(--radius-xs);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--transition);background:transparent}
+.saved-actions button:hover{background:var(--muted)}
+.saved-actions button svg{width:16px;height:16px}
+.btn-move{color:var(--fg-muted)}
+.btn-delete{color:var(--danger)}
+
+/* Form */
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;font-weight:500;color:var(--fg-muted);margin-bottom:6px}
+.form-input{width:100%;padding:12px 14px;background:var(--muted);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--fg);font-size:15px;font-family:inherit;transition:border-color var(--transition),box-shadow var(--transition);min-height:48px}
+.form-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.form-input::placeholder{color:var(--fg-dim)}
+.form-input[readonly]{opacity:.7;cursor:default}
+.input-row{display:flex;gap:8px;align-items:stretch}
+.input-row .form-input{flex:1}
+.btn-clear{width:48px;min-height:48px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--muted);color:var(--fg-dim);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--transition);flex-shrink:0}
+.btn-clear:hover{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn-clear svg{width:16px;height:16px}
+
+/* Buttons */
+.btn-primary{width:100%;padding:14px;border:none;border-radius:var(--radius-sm);font-size:16px;font-weight:600;font-family:inherit;cursor:pointer;transition:all var(--transition);min-height:52px;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-primary.wifi-btn{background:var(--accent);color:#fff}
+.btn-primary.wifi-btn:hover{background:var(--accent-hover)}
+.btn-primary.wifi-btn:disabled{background:var(--border);color:var(--fg-dim);cursor:not-allowed}
+.btn-primary.save-btn{background:var(--fg);color:var(--bg)}
+.btn-primary.save-btn:hover{background:#E2E8F0}
+.btn-primary.save-btn:disabled{background:var(--border);color:var(--fg-dim);cursor:not-allowed}
+
+/* AP list */
+.ap-list{margin-top:4px}
+.ap-label{font-size:13px;color:var(--fg-dim);margin-bottom:8px}
+.ap-item{display:flex;align-items:center;justify-content:space-between;padding:12px;border-radius:var(--radius-sm);cursor:pointer;transition:background var(--transition);min-height:48px}
+.ap-item:hover{background:var(--surface-hover)}
+.ap-item:active{background:var(--muted)}
+.ap-ssid{font-size:14px;font-weight:500;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ap-meta{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px}
+.ap-rssi{font-size:12px;color:var(--fg-dim)}
+.ap-icon{width:16px;height:16px;flex-shrink:0}
+.ap-icon.secured{color:var(--fg-muted)}
+.ap-icon.open{color:var(--accent)}
+.scanning-text{font-size:13px;color:var(--fg-dim);font-style:italic;display:flex;align-items:center;gap:8px}
+.scanning-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+/* Error */
+.error-msg{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#FCA5A5;border-radius:var(--radius-sm);padding:10px 14px;font-size:13px;text-align:center;margin-bottom:12px;display:none}
+.error-msg.show{display:block}
+
+/* Toast */
+.toast{position:fixed;top:24px;left:50%;transform:translateX(-50%) translateY(-80px);background:var(--accent);color:#fff;padding:12px 24px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;z-index:1000;opacity:0;transition:all 300ms ease;pointer-events:none;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* Loading overlay */
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:2000;justify-content:center;align-items:center}
+.loading-overlay.show{display:flex}
+.loading-content{display:flex;flex-direction:column;align-items:center;gap:16px}
+.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:var(--fg-muted);font-size:15px;font-weight:500}
+
+/* Hidden tab content */
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* Responsive */
+@media(max-width:360px){.page{padding:12px;padding-top:48px}.header h1{font-size:19px}}
+</style>
+</head>
+<body>
+<div class="toast" id="toast"></div>
+<div class="loading-overlay" id="loadingOverlay">
+<div class="loading-content">
+<div class="spinner"></div>
+<div class="loading-text" data-lang="connecting">Connecting...</div>
+</div>
+</div>
+
+<div class="page">
+<div class="header">
+<h1 data-lang="title">Network Configuration</h1>
+<select class="lang-select" id="language" onchange="changeLanguage()">
+<option value="zh-CN">简体中文</option>
+<option value="en-US">English</option>
+</select>
+</div>
+
+<div class="tabs">
+<div class="tab active" onclick="switchTab('wifi')" data-lang="wifi_tab">Wi-Fi Config</div>
+<div class="tab" onclick="switchTab('advanced')" data-lang="advanced_tab">Advanced</div>
+</div>
+
+<div id="wifi-tab" class="tab-content active">
+<div class="card" id="saved_list_container" style="display:none">
+<div class="card-title">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+<span data-lang="saved_wifi">Saved Wi-Fi</span>
+</div>
+<div id="saved_list"></div>
+</div>
+
+<div class="card">
+<div class="card-title">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+<span data-lang="new_wifi">New Wi-Fi</span>
+</div>
+<div class="error-msg" id="error"></div>
+<form action="/submit" method="post" onsubmit="submitForm(event)">
+<div class="form-group">
+<label for="ssid">SSID</label>
+<input class="form-input" type="text" id="ssid" name="ssid" required readonly placeholder="...">
+</div>
+<div class="form-group">
+<label for="password" data-lang="password">Password</label>
+<input class="form-input" type="password" id="password" name="password" placeholder="••••••••">
+</div>
+<button type="submit" class="btn-primary wifi-btn" id="button">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+<span data-lang="connect">Connect</span>
+</button>
+</form>
+<div class="ap-list" id="ap_list"></div>
+</div>
+</div>
+
+<div id="advanced-tab" class="tab-content">
+<form action="/advanced/submit" method="post" onsubmit="submitAdvancedForm(event)">
+<div class="card">
+<div class="card-title">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+<span data-lang="advanced_tab">Advanced</span>
+</div>
+<div class="error-msg" id="advanced_error"></div>
+
+<div class="form-group">
+<label for="ota_url" data-lang="ota_url">Custom OTA URL</label>
+<div class="input-row">
+<input class="form-input" type="text" id="ota_url" name="ota_url" placeholder="https://...">
+<button type="button" class="btn-clear" onclick="clearOtaUrl()">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+</button>
+</div>
+</div>
+
+<div class="form-group">
+<label for="device_secret" data-lang="device_secret">Device Secret</label>
+<div class="input-row">
+<input class="form-input" type="text" id="device_secret" name="device_secret" placeholder="88888888">
+<button type="button" class="btn-clear" onclick="clearDeviceSecret()">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+</button>
+</div>
+</div>
+
+<button type="submit" class="btn-primary save-btn" id="advanced_button">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+<span data-lang="save">Save</span>
+</button>
+</div>
+</form>
+</div>
+</div>
+
+<script>
+const button=document.getElementById('button');
+const error=document.getElementById('error');
+const ssid=document.getElementById('ssid');
+let support5G=false;
+
+const translations={
+'en-US':{title:'Network Configuration',saved_wifi:'Saved Wi-Fi',new_wifi:'New Wi-Fi',password:'Password',connect:'Connect',connecting:'Connecting...',select_wifi:'Select a 2.4G Wi-Fi from the list below:',select_wifi_5g:'Select a Wi-Fi from the list below:',scanning:'Scanning networks...',wifi_tab:'Wi-Fi Config',advanced_tab:'Advanced',ota_url:'Custom OTA URL',device_secret:'Device Secret',save:'Save',default_badge:'DEFAULT',no_saved:'No saved networks'},
+'zh-CN':{title:'网络配置',saved_wifi:'已保存的 Wi-Fi',new_wifi:'新的 Wi-Fi',password:'密码',connect:'连接',connecting:'正在连接...',select_wifi:'从下面列表选择 2.4G Wi-Fi:',select_wifi_5g:'从下面列表选择 Wi-Fi:',scanning:'正在扫描网络...',wifi_tab:'Wi-Fi 配置',advanced_tab:'高级选项',ota_url:'自定义 OTA 地址',device_secret:'设备密钥',save:'保存',default_badge:'默认',no_saved:'无已保存网络'}
+};
+
+const languageMap={'zh':'zh-CN','zh-CN':'zh-CN','zh-TW':'zh-CN','zh-HK':'zh-CN','en':'en-US','en-US':'en-US','en-GB':'en-US','en-CA':'en-US','en-AU':'en-US'};
+
+function getSupportedLanguage(lang){if(languageMap[lang])return languageMap[lang];const m=lang.split('-')[0];return languageMap[m]||'zh-CN'}
+
+function changeLanguage(){
+const lang=document.getElementById('language').value;
+if(!translations[lang]){document.getElementById('language').value='en-US';return changeLanguage()}
+document.title=translations[lang].title;
+document.querySelectorAll('[data-lang]').forEach(e=>{e.textContent=translations[lang][e.getAttribute('data-lang')]});
+document.querySelectorAll('[data-lang-value]').forEach(e=>{e.value=translations[lang][e.getAttribute('data-lang-value')]});
+const apList=document.getElementById('ap_list');
+if(apList.firstChild){apList.firstChild.textContent=support5G?translations[lang].select_wifi_5g:translations[lang].select_wifi}
+localStorage.setItem('preferred_language',lang);
+}
+
+const SVG_LOCK='<svg class="ap-icon secured" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>';
+const SVG_UNLOCK='<svg class="ap-icon open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 019.9-1"/></svg>';
+const SVG_ARROW_UP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+const SVG_TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>';
+
+function renderSavedList(data){
+const c=document.getElementById('saved_list_container');
+const ul=document.getElementById('saved_list');
+const lang=document.getElementById('language').value;
+ul.innerHTML='';
+data.forEach((s,i)=>{
+const div=document.createElement('div');
+div.className='saved-item';
+let h='<span class="ssid-name">'+s+'</span>';
+if(i===0)h+='<span class="ssid-badge">'+translations[lang].default_badge+'</span>';
+h+='<span class="saved-actions">';
+if(i>0)h+='<button type="button" class="btn-move" onclick="setDefaultItem(this,'+i+')" title="Set default">'+SVG_ARROW_UP+'</button>';
+h+='<button type="button" class="btn-delete" onclick="deleteItem(this,'+i+')" title="Delete">'+SVG_TRASH+'</button></span>';
+div.innerHTML=h;
+ul.appendChild(div);
+});
+c.style.display=data.length>0?'block':'none';
+}
+
+function deleteItem(el,i){el.disabled=true;fetch('/saved/delete?index='+i).then(r=>r.json()).then(()=>loadSavedList())}
+function setDefaultItem(el,i){el.disabled=true;fetch('/saved/set_default?index='+i).then(r=>r.json()).then(()=>loadSavedList())}
+function loadSavedList(){fetch('/saved/list').then(r=>r.json()).then(d=>renderSavedList(d))}
+
+function loadAPList(){
+if(button.disabled)return;
+const lang=document.getElementById('language').value;
+const apList=document.getElementById('ap_list');
+if(!apList.querySelector('.ap-item'))apList.innerHTML='<div class="scanning-text"><span class="scanning-dot"></span><span>'+translations[lang].scanning+'</span></div>';
+fetch('/scan').then(r=>r.json()).then(data=>{
+support5G=data.support_5g;
+const selectText=support5G?translations[lang].select_wifi_5g:translations[lang].select_wifi;
+apList.innerHTML='<div class="ap-label">'+selectText+'</div>';
+data.aps.forEach(ap=>{
+const div=document.createElement('div');
+div.className='ap-item';
+div.innerHTML='<span class="ap-ssid">'+ap.ssid+'</span><span class="ap-meta"><span class="ap-rssi">'+ap.rssi+' dBm</span>'+(ap.authmode===0?SVG_UNLOCK:SVG_LOCK)+'</span>';
+div.addEventListener('click',()=>{ssid.value=ap.ssid});
+apList.appendChild(div);
+});
+setTimeout(loadAPList,5000);
+}).catch(()=>{setTimeout(loadAPList,5000)});
+}
+
+async function submitForm(event){
+event.preventDefault();
+button.disabled=true;
+error.classList.remove('show');
+document.getElementById('loadingOverlay').classList.add('show');
+try{
+const r=await fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid.value,password:document.getElementById('password').value})});
+const d=await r.json();
+if(!d.success)throw new Error(d.error||'Connection failed');
+button.disabled=false;
+window.location.href='/done.html';
+}catch(e){
+document.getElementById('loadingOverlay').classList.remove('show');
+error.textContent=e.message;
+error.classList.add('show');
+button.disabled=false;
+}
+}
+
+async function submitAdvancedForm(event){
+event.preventDefault();
+const btn=document.getElementById('advanced_button');
+const err=document.getElementById('advanced_error');
+btn.disabled=true;
+err.classList.remove('show');
+try{
+const r=await fetch('/advanced/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+ota_url:document.getElementById('ota_url').value,
+device_secret:document.getElementById('device_secret').value
+})});
+const d=await r.json();
+if(!d.success)throw new Error(d.error||'Save failed');
+btn.disabled=false;
+showToast('Configuration saved');
+}catch(e){err.textContent=e.message;err.classList.add('show');btn.disabled=false}
+}
+
+function switchTab(name){
+document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+document.getElementById(name+'-tab').classList.add('active');
+document.querySelector('.tab[onclick="switchTab(\''+name+'\')"]').classList.add('active');
+}
+
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
+
+async function loadAdvancedConfig(){
+try{
+const d=await(await fetch('/advanced/config')).json();
+if(d.ota_url)document.getElementById('ota_url').value=d.ota_url;
+if(d.device_secret)document.getElementById('device_secret').value=d.device_secret;
+}catch(e){console.error('Error loading advanced config:',e)}
+}
+
+function clearOtaUrl(){document.getElementById('ota_url').value=''}
+function clearDeviceSecret(){document.getElementById('device_secret').value=''}
+
+document.addEventListener('DOMContentLoaded',()=>{
+const langParam=new URLSearchParams(window.location.search).get('lang');
+const browserLang=navigator.language||navigator.userLanguage;
+const savedLang=langParam||localStorage.getItem('preferred_language')||getSupportedLanguage(browserLang);
+document.getElementById('language').value=savedLang;
+changeLanguage();
+loadSavedList();
+loadAPList();
+loadAdvancedConfig();
+});
+
+window.addEventListener('pageshow',event=>{if(event.persisted)loadSavedList()});
+ssid.addEventListener('touchstart',()=>{ssid.removeAttribute('readonly');ssid.focus()},{once:true});
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Configuration Successful</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0F172A;--surface:#1E293B;--border:#334155;--fg:#F8FAFC;--fg-muted:#94A3B8;--accent:#22C55E;--accent-glow:rgba(34,197,94,.12);--radius-xs:6px}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;-webkit-tap-highlight-color:transparent}
+
+.lang-select{position:fixed;top:16px;right:16px;background:var(--surface);color:var(--fg-muted);border:1px solid var(--border);border-radius:var(--radius-xs);padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;min-height:36px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2394A3B8'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:28px}
+.lang-select:focus{outline:2px solid var(--accent);outline-offset:2px}
+
+.done-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:24px}
+
+.check-ring{width:120px;height:120px;border-radius:50%;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;animation:scaleIn .5s cubic-bezier(.22,1,.36,1) both}
+.check-ring svg{width:56px;height:56px;color:var(--accent);animation:drawCheck .6s .3s ease both}
+.check-ring svg path{stroke-dasharray:60;stroke-dashoffset:60}
+@keyframes scaleIn{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes drawCheck{0%{stroke-dashoffset:60;opacity:0}100%{stroke-dashoffset:0;opacity:1}}
+
+.msg{font-size:22px;font-weight:700;letter-spacing:-.3px}
+.sub{font-size:14px;color:var(--fg-muted);margin-top:-12px}
+
+@media(max-width:360px){.check-ring{width:100px;height:100px}.check-ring svg{width:44px;height:44px}.msg{font-size:19px}}
+</style>
+</head>
+<body>
+<select class="lang-select" id="language" onchange="changeLanguage()">
+<option value="zh-CN">简体中文</option>
+<option value="en-US">English</option>
+</select>
+
+<div class="done-card">
+<div class="check-ring">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M20 6L9 17l-5-5"/>
+</svg>
+</div>
+<div class="msg" id="msg"></div>
+<div class="sub" id="sub"></div>
+</div>
+
+<script>
+const translations={
+'zh-CN':{title:'配置成功',msg:'配置成功！',sub:'设备将自动连接网络'},
+'en-US':{title:'Configuration Successful',msg:'Configuration successful!',sub:'The device will connect automatically'}
+};
+const languageMap={'zh':'zh-CN','zh-CN':'zh-CN','zh-TW':'zh-CN','zh-HK':'zh-CN','en':'en-US','en-US':'en-US','en-GB':'en-US','en-CA':'en-US','en-AU':'en-US'};
+function getSupportedLanguage(lang){if(languageMap[lang])return languageMap[lang];const m=lang.split('-')[0];return languageMap[m]||'zh-CN'}
+function changeLanguage(){const lang=document.getElementById('language').value;document.title=translations[lang].title;document.getElementById('msg').textContent=translations[lang].msg;document.getElementById('sub').textContent=translations[lang].sub;localStorage.setItem('preferred_language',lang)}
+
+window.addEventListener('load',function(){
+const bl=navigator.language||navigator.userLanguage;
+document.getElementById('language').value=localStorage.getItem('preferred_language')||getSupportedLanguage(bl);
+changeLanguage();
+setTimeout(function(){fetch('/exit',{method:'POST'}).then(r=>{if(r.ok)console.log('Exit config mode sent');else console.error('Exit request failed')}).catch(e=>console.error('Error:',e))},1000);
+});
+</script>
+</body>
+</html>

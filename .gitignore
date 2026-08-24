@@ -1,0 +1,29 @@
+# Build output
+build/
+build_old_*/
+managed_components/
+dependencies.lock
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compiled
+*.o
+*.a
+*.so
+*.elf
+*.bin
+*.map
+*.hex
+
+# Logs
+*.log
+sdkconfig.old
+
+# OS
+.DS_Store
+Thumbs.db

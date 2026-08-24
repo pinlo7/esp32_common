@@ -1,0 +1,12 @@
+idf_component_register(SRCS "main.cc"
+                            "board/board.cc"
+                            "common/settings.cc"
+                            "common/system_info.cc"
+                            "board/wifi_board.cc"
+                            "board/my_wifi_pcb_board.cc"
+                            "App.cc"
+                            "ota.cc"
+                            "device_mqtt.cc"
+                    INCLUDE_DIRS    "."
+                                    "board/include"
+                                    "common/include")
