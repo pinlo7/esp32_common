@@ -92,8 +92,10 @@ void App::HandleNetworkEvent() {
     case NetworkEvent::Disconnected:
         network_online_ = false;
         ESP_LOGW(TAG, "Disconnected");
-        // TODO: 若希望断网期间不刷 MQTT 重连错误日志，可给 MqttService 增加网络可用性开关，
-        //       断网时暂停重连循环，恢复时再继续（不能用 Stop()，App 以 mqtt_service_ 非空判断是否已启动）
+        // 断网时暂停 MQTT 重连（不能用 Stop()，App 以 mqtt_service_ 非空判断是否已启动）
+        if (mqtt_service_) {
+            mqtt_service_->SetNetworkAvailable(false);
+        }
         // display->SetStatus("Disconnected");
         // display->SetNetworkIcon("wifi_off");
         break;
@@ -121,9 +123,9 @@ void App::HandleNetworkEvent() {
 void App::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "network connected!");
 
-    // 网络恢复：通知 MQTT 重置重连退避并立即重试（若 MQTT 已启动）
+    // 网络恢复：恢复 MQTT 连接并立即重试（若 MQTT 已启动）
     if (mqtt_service_) {
-        mqtt_service_->NotifyNetworkAvailable();
+        mqtt_service_->SetNetworkAvailable(true);
     }
 
     // 创建任务激活设备,OTA等待操作

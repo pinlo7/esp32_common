@@ -75,15 +75,18 @@ bool MqttService::TryConnect() {
     return true;
 }
 
-void MqttService::NotifyNetworkAvailable() {
+void MqttService::SetNetworkAvailable(bool available) {
     TaskHandle_t task = nullptr;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        retry_delay_sec_ = 1;
-        task = task_handle_;
+        network_available_ = available;
+        if (available) {
+            retry_delay_sec_ = 1;  // 网络恢复：重置退避
+            task = task_handle_;
+        }
     }
     if (task != nullptr) {
-        xTaskNotifyGive(task);
+        xTaskNotifyGive(task);  // 唤醒连接循环立即重试
     }
 }
 
@@ -106,21 +109,24 @@ void MqttService::ConnectLoop() {
 
     while (run_) {
         bool connected = false;
+        bool network_available = true;
         int retry_delay_sec = 1;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             connected = connected_;
+            network_available = network_available_;
             retry_delay_sec = retry_delay_sec_;
         }
 
-        if (!connected) {
+        // 网络不可用时暂停重连，等待网络恢复通知（SetNetworkAvailable(true) 会唤醒）
+        if (!connected && network_available) {
             if (TryConnect()) {
                 std::lock_guard<std::mutex> lock(mutex_);
                 retry_delay_sec_ = 1;
             } else {
                 ESP_LOGW(TAG, "MQTT connect failed, retry in %ds", retry_delay_sec);
                 for (int i = 0; i < retry_delay_sec && run_; i++) {
-                    // 网络恢复通知（NotifyNetworkAvailable）可随时唤醒，立即重试
+                    // 网络恢复通知（SetNetworkAvailable(true)）可随时唤醒，立即重试
                     ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
                 }
                 {
@@ -147,7 +153,7 @@ void MqttService::ConnectLoop() {
             }
         }
 
-        // 等待 1s；网络恢复通知（NotifyNetworkAvailable）可立即唤醒
+        // 等待 1s；网络恢复通知（SetNetworkAvailable(true)）可立即唤醒
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1000));
     }
 }
