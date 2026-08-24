@@ -299,7 +299,7 @@ function getServerTime() {
   return {
     timestamp: Date.now(),
     timezone: 'Asia/Shanghai',
-    timezone_offset: -480
+    timezone_offset: 480
   };
 }
 

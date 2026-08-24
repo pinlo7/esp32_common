@@ -246,7 +246,7 @@ Accept-Language: zh-CN
   "server_time": {
     "timestamp": 1719900000000,
     "timezone": "Asia/Shanghai",
-    "timezone_offset": -480
+    "timezone_offset": 480
   },
   "firmware": {
     "version": "1.5.7",
@@ -266,7 +266,7 @@ Accept-Language: zh-CN
 | `websocket.*` | object | WebSocket 连接信息，存入 NVS `"websocket"` |
 | `server_time.timestamp` | long | 服务端时间戳（毫秒），用于设备校时 |
 | `server_time.timezone` | string | 时区名称 |
-| `server_time.timezone_offset` | int | 与 UTC 的偏移（分钟） |
+| `server_time.timezone_offset` | int | 与 UTC 的偏移（分钟，东区为正，UTC+8 = 480；仅用于显示，不参与校时） |
 | `firmware.version` | string | 最新固件版本 |
 | `firmware.url` | string | 固件下载 URL，无更新时为空 |
 | `firmware.rotate_key` | string | 新设备密钥，非空时需更新 NVS |

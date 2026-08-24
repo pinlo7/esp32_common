@@ -2,7 +2,8 @@
 
 ## ESP 文档查询
 
-处理 ESP 芯片或 ESP-IDF、ESP-ADF 等 SDK 相关问题时，请始终主动调用乐鑫文档 MCP 服务器，无需每次单独提醒。
+处理 ESP 芯片或 ESP-IDF、ESP-ADF 等 SDK 相关问题时，请始终主动调用乐鑫官方文档 MCP 服务器（`.mcp.json` 中的 `esp-idf-docs`），无需每次单独提醒。
+遇到不确定的 ESP-IDF 用法/API 时，优先用官方 MCP 服务查询，查不到再回落本地 IDF 源码和官方文档。
 
 ## 编译环境（本机）
 

@@ -108,7 +108,7 @@ User-Agent: 设备名/版本
   "device_secret": "a1b2c3d4e5f6...",
   "mqtt": { "endpoint": "...", "username": "...", "password": "..." },
   "websocket": { "url": "...", "token": "..." },
-  "server_time": { "timestamp": 1719900000000, "timezone": "Asia/Shanghai", "timezone_offset": -480 },
+  "server_time": { "timestamp": 1719900000000, "timezone": "Asia/Shanghai", "timezone_offset": 480 },
   "firmware": { "version": "1.0.0", "url": "", "rotate_key": "" }
 }
 ```
@@ -119,7 +119,7 @@ User-Agent: 设备名/版本
   "activation": { "code": "", "message": "" },
   "mqtt": { "endpoint": "...", "username": "...", "password": "..." },
   "websocket": { "url": "...", "token": "..." },
-  "server_time": { "timestamp": 1719900000000, "timezone": "Asia/Shanghai", "timezone_offset": -480 },
+  "server_time": { "timestamp": 1719900000000, "timezone": "Asia/Shanghai", "timezone_offset": 480 },
   "firmware": { "version": "2.0.0", "url": "https://...", "rotate_key": "" }
 }
 ```

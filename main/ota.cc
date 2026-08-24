@@ -16,7 +16,7 @@
 #include <algorithm>
 
 #define TAG "Ota"
-#define CONFIG_OTA_URL "http://192.168.3.185:3001/api/device_manage/ota"
+#define CONFIG_OTA_URL "http://127.0.0.1:3001/api/device_manage/ota"
 
 // 提取 URL 的 origin（scheme://host[:port]），用于拼接固件下载地址
 static std::string ExtractOrigin(const std::string& url) {
@@ -27,7 +27,6 @@ static std::string ExtractOrigin(const std::string& url) {
 }
 
 Ota::Ota() {
-    // device_key_ = "test_secret";
     device_key_ = GetDeviceSecret();
     if (device_key_.empty()) {
         ESP_LOGW(TAG, "No device key found, activation required");
@@ -203,13 +202,11 @@ esp_err_t Ota::ParseResponse(const std::string& response) {
     cJSON* server_time = cJSON_GetObjectItem(root, "server_time");
     if (cJSON_IsObject(server_time)) {
         cJSON* timestamp = cJSON_GetObjectItem(server_time, "timestamp");
-        cJSON* timezone_offset = cJSON_GetObjectItem(server_time, "timezone_offset");
 
         if (cJSON_IsNumber(timestamp)) {
+            // timestamp 为 UTC epoch 毫秒（绝对时间），直接写入系统时钟；
+            // timezone_offset 仅用于本地时间显示，不能加进 epoch，否则时钟会偏一个时区
             double ts = timestamp->valuedouble;
-            if (cJSON_IsNumber(timezone_offset)) {
-                ts += (timezone_offset->valueint * 60 * 1000);
-            }
 
             struct timeval tv;
             tv.tv_sec = (time_t)(ts / 1000);
@@ -276,7 +273,7 @@ esp_err_t Ota::CheckVersion() {
 
     ESP_LOGI(TAG, "BuildRequestBody...");
     std::string body = BuildRequestBody();
-    ESP_LOGI(TAG, "Body: %s", body.c_str());
+    // ESP_LOGI(TAG, "Body: %s", body.c_str());
     std::string timestamp = GetTimestamp();
 
     auto& board = Board::GetInstance();

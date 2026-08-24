@@ -138,10 +138,8 @@ void App::HandleNetworkConnectedEvent() {
 void App::ActivationTask() { 
     ota_ = std::make_unique<Ota>();
 
-    // 首次激活前必须先同步系统时间：服务器对 OTA 请求做时间戳校验（±300s）
-    SyncTime();
-
     // 未激活且配网时保存了引导密钥：进入首次激活流程
+    bool skip_ota_check = false;
     if (!ota_->HasDeviceSecret()) {
         Settings wifi_settings("wifi", false);
         std::string group_key = wifi_settings.GetString("group_key");
@@ -150,11 +148,18 @@ void App::ActivationTask() {
             ESP_LOGI(TAG, "First activation with provision key");
         } else {
             ESP_LOGW(TAG, "No device secret and no provision key, activation not possible");
+            // 服务器用 group_key 换 device_secret，没有 group_key 时请求必然失败，直接跳过 OTA 检查
+            skip_ota_check = true;
         }
     }
 
-    CheckNewVersion();
-    ESP_LOGI(TAG, "当前版本 %s", ota_->GetCurrentVersion().c_str());
+    if (!skip_ota_check) {
+        CheckNewVersion();
+        ESP_LOGI(TAG, "当前版本 %s", ota_->GetCurrentVersion().c_str());
+    } else {
+        ESP_LOGW(TAG, "Skip OTA check: no device secret and no provision key");
+        // 做无密钥, 无组密钥提示
+    }
 
     // 激活/OTA 检查完成后启动 MQTT 服务（升级成功会重启，不会走到这里）
     if (ota_->HasDeviceSecret() && !mqtt_service_) {

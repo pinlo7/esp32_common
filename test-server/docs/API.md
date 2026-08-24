@@ -102,7 +102,7 @@ Accept-Language: zh-CN（可选）
   "server_time": {
     "timestamp": 1719900000000,
     "timezone": "Asia/Shanghai",
-    "timezone_offset": -480
+    "timezone_offset": 480
   },
   "firmware": {
     "version": "1.0.0",
