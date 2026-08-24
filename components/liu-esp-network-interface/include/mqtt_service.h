@@ -18,10 +18,13 @@
  * 负责连接生命周期（连接/断线指数退避重连）、订阅管理与消息分发、发布、
  * 可选心跳回调。不包含任何业务逻辑（主题语义、消息格式、凭据来源均由使用方决定）。
  *
+ * 重连由本服务统一负责（每次断线按 1s 起指数退避，重建传输实例），
+ * 各传输实现（esp-mqtt / ML307 / EC801E）的客户端内部自动重连应关闭，避免双重连接管理。
+ *
  * 用法：
- *   1. 注入 Mqtt 实例工厂（如从 NetworkInterface::CreateMqtt 创建）
+ *   1. 注入 Mqtt 实例工厂（如从 NetworkInterface::CreateMqtt 创建，每次连接/重连时调用）
  *   2. Start(config) 启动后台任务
- *   3. Subscribe(topic, qos, handler) 注册订阅（断线重连后自动恢复）
+ *   3. Subscribe(topic, qos, handler) 注册订阅（连接建立/重连后自动恢复）
  *   4. Publish(topic, payload, qos) 发布
  */
 class MqttService {

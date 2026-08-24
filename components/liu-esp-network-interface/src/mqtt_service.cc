@@ -49,15 +49,27 @@ bool MqttService::TryConnect() {
         }
     });
 
-    if (!mqtt->Connect(config_.host, config_.port, config_.client_id,
-                       config_.username, config_.password)) {
+    // 先挂实例再 Connect：连接事件回调（OnConnected 里要恢复订阅）可能早于 Connect 返回触发
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        mqtt_ = std::move(mqtt);
+    }
+
+    bool ok = mqtt_->Connect(config_.host, config_.port, config_.client_id,
+                             config_.username, config_.password);
+    if (!ok) {
         ESP_LOGW(TAG, "MQTT connect failed");
+        // 连接失败：销毁实例（移到局部变量，锁外析构），由重连循环稍后重建
+        std::unique_ptr<Mqtt> dead;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            dead = std::move(mqtt_);
+        }
         return false;
     }
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        mqtt_ = std::move(mqtt);
         connected_ = true;
     }
     return true;

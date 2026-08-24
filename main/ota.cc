@@ -154,6 +154,8 @@ esp_err_t Ota::ParseResponse(const std::string& response) {
     has_websocket_config_ = false;
     has_server_time_ = false;
     has_rotated_key_ = false;
+    firmware_checksum_.clear();
+    firmware_file_size_ = 0;
 
     // 1. 解析 device_secret
     cJSON* device_secret = cJSON_GetObjectItem(root, "device_secret");
@@ -223,6 +225,8 @@ esp_err_t Ota::ParseResponse(const std::string& response) {
         cJSON* version = cJSON_GetObjectItem(firmware, "version");
         cJSON* url = cJSON_GetObjectItem(firmware, "url");
         cJSON* rotate_key = cJSON_GetObjectItem(firmware, "rotate_key");
+        cJSON* checksum = cJSON_GetObjectItem(firmware, "checksum");
+        cJSON* file_size = cJSON_GetObjectItem(firmware, "file_size");
 
         if (cJSON_IsString(version)) {
             firmware_version_ = version->valuestring;
@@ -250,6 +254,17 @@ esp_err_t Ota::ParseResponse(const std::string& response) {
             has_rotated_key_ = true;
             ESP_LOGI(TAG, "Key rotation requested");
         }
+
+        if (cJSON_IsString(checksum) && strlen(checksum->valuestring) > 0) {
+            firmware_checksum_ = checksum->valuestring;
+        }
+        if (cJSON_IsNumber(file_size)) {
+            firmware_file_size_ = (long long)file_size->valuedouble;
+        }
+        ESP_LOGI(TAG, "Firmware meta: version=%s url=%s checksum=%s size=%lld",
+                 firmware_version_.c_str(), firmware_url_.c_str(),
+                 firmware_checksum_.empty() ? "(none)" : firmware_checksum_.c_str(),
+                 firmware_file_size_);
     }
 
     cJSON_Delete(root);
@@ -358,7 +373,10 @@ void Ota::MarkCurrentVersionValid() {
     }
 }
 
-bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback) {
+bool Ota::Upgrade(const std::string& firmware_url,
+                  const std::string& expected_checksum,
+                  long long expected_file_size,
+                  std::function<void(int progress, size_t speed)> callback) {
     ESP_LOGI(TAG, "Upgrading from %s", firmware_url.c_str());
 
     esp_ota_handle_t update_handle = 0;
@@ -374,6 +392,8 @@ bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progre
 
     auto network = Board::GetInstance().GetNetwork();
     auto http = network->CreateHttp(0);
+    // 固件下载是长连接，单块接收超时放宽到 60s（默认 30s 在慢速/不稳定链路上容易误判断流）
+    http->SetTimeout(60000);
     if (!http->Open("GET", firmware_url)) {
         ESP_LOGE(TAG, "Failed to open firmware URL");
         return false;
@@ -394,10 +414,27 @@ bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progre
     size_t total_read = 0, recent_read = 0;
     auto last_calc_time = esp_timer_get_time();
 
+    // 增量 SHA256：服务器下发 checksum 时启用完整性校验
+    psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
+    bool hash_enabled = !expected_checksum.empty();
+    if (hash_enabled) {
+        if (psa_hash_setup(&hash_op, PSA_ALG_SHA_256) != PSA_SUCCESS) {
+            ESP_LOGE(TAG, "SHA256 setup failed");
+            return false;
+        }
+        ESP_LOGI(TAG, "Checksum verification enabled, expected: %s", expected_checksum.c_str());
+    } else {
+        ESP_LOGW(TAG, "No checksum from server, skip SHA256 verification");
+    }
+
     while (true) {
         int ret = http->Read(buffer, sizeof(buffer));
         if (ret < 0) {
             ESP_LOGE(TAG, "Read error");
+            if (hash_enabled) psa_hash_abort(&hash_op);
+            if (image_header_checked) {
+                esp_ota_abort(update_handle);
+            }
             return false;
         }
 
@@ -415,6 +452,17 @@ bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progre
         }
 
         if (ret == 0) break;
+
+        if (hash_enabled) {
+            if (psa_hash_update(&hash_op, reinterpret_cast<const uint8_t*>(buffer), ret) != PSA_SUCCESS) {
+                ESP_LOGE(TAG, "SHA256 update failed");
+                psa_hash_abort(&hash_op);
+                if (image_header_checked) {
+                    esp_ota_abort(update_handle);
+                }
+                return false;
+            }
+        }
 
         if (!image_header_checked) {
             image_header.append(buffer, ret);
@@ -436,11 +484,52 @@ bool Ota::Upgrade(const std::string& firmware_url, std::function<void(int progre
         esp_err_t err = esp_ota_write(update_handle, buffer, ret);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
+            if (hash_enabled) psa_hash_abort(&hash_op);
             esp_ota_abort(update_handle);
             return false;
         }
     }
     http->Close();
+
+    // ── 下载校验：文件大小 ──
+    bool size_ok = true;
+    if (expected_file_size > 0 && (long long)total_read != expected_file_size) {
+        ESP_LOGE(TAG, "Firmware size mismatch: got %u, expected %lld", total_read, expected_file_size);
+        size_ok = false;
+    } else if (content_length != total_read) {
+        ESP_LOGE(TAG, "Firmware size mismatch vs Content-Length: got %u, expected %u", total_read, content_length);
+        size_ok = false;
+    }
+
+    // ── 下载校验：SHA256 ──
+    bool checksum_ok = true;
+    if (hash_enabled) {
+        unsigned char digest[32];
+        size_t digest_len = 0;
+        if (psa_hash_finish(&hash_op, digest, sizeof(digest), &digest_len) != PSA_SUCCESS) {
+            ESP_LOGE(TAG, "SHA256 finish failed");
+            checksum_ok = false;
+        } else {
+            char hex[65];
+            for (int i = 0; i < 32; i++) {
+                sprintf(hex + i * 2, "%02x", digest[i]);
+            }
+            hex[64] = '\0';
+            ESP_LOGI(TAG, "Downloaded SHA256: %s", hex);
+            if (expected_checksum != hex) {
+                ESP_LOGE(TAG, "Checksum mismatch: got %s, expected %s", hex, expected_checksum.c_str());
+                checksum_ok = false;
+            }
+        }
+    }
+
+    if (!size_ok || !checksum_ok) {
+        if (hash_enabled) psa_hash_abort(&hash_op);
+        if (image_header_checked) {
+            esp_ota_abort(update_handle);
+        }
+        return false;
+    }
 
     esp_err_t err = esp_ota_end(update_handle);
     if (err != ESP_OK) {
@@ -463,7 +552,7 @@ bool Ota::StartUpgrade(std::function<void(int progress, size_t speed)> callback)
         ESP_LOGE(TAG, "No firmware URL");
         return false;
     }
-    return Upgrade(firmware_url_, callback);
+    return Upgrade(firmware_url_, firmware_checksum_, firmware_file_size_, callback);
 }
 
 // ============ 版本比较 ============

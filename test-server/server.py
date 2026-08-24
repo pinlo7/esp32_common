@@ -187,10 +187,19 @@ def build_server_time():
 def build_firmware(current_version, first_activation):
     latest_ver, latest_file = get_latest_firmware()
     has_new = latest_ver and (first_activation or is_newer_version(latest_ver, current_version))
+    checksum = None
+    file_size = None
+    if latest_file:
+        fpath = FIRMWARE_DIR / latest_file
+        file_size = fpath.stat().st_size
+        checksum = hashlib.sha256(fpath.read_bytes()).hexdigest()
     return {
         "version": latest_ver or current_version,
         "url": f"/firmware/{latest_file}" if has_new else "",
         "rotate_key": "",
+        "notes": None,  # 测试服务器无 notes 元数据；生产固件有版本说明时返回该字段
+        "checksum": checksum,
+        "file_size": file_size,
     }
 
 

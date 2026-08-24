@@ -1,5 +1,4 @@
 #include "device_mqtt.h"
-#include "board.h"
 #include "settings.h"
 #include "system_info.h"
 
@@ -17,7 +16,10 @@ DeviceMqtt::DeviceMqtt() : mqtt_service_(std::make_unique<MqttService>()) {}
 DeviceMqtt::~DeviceMqtt() {
     Stop();
 }
-
+/** 注入底层 Mqtt 传输工厂（必须在 Start 前调用，转发给 MqttService） */
+void DeviceMqtt::SetMqttFactory(std::function<std::unique_ptr<Mqtt>()> factory) {
+    mqtt_service_->SetMqttFactory(std::move(factory));
+}
 // ============ NVS 配置加载 ============
 
 bool DeviceMqtt::LoadConfig() {
@@ -71,9 +73,8 @@ bool DeviceMqtt::LoadConfig() {
     ESP_LOGI(TAG, "MQTT endpoint: %s://%s:%d, client: %s",
              ssl ? "mqtts" : "mqtt", config.host.c_str(), config.port, config.client_id.c_str());
 
-    mqtt_service_->SetMqttFactory([]() {
-        return Board::GetInstance().GetNetwork()->CreateMqtt(0);
-    });
+    // 工厂注入在 SetMqttFactory 中完成
+    
     mqtt_service_->Subscribe("device/" + device_id_ + "/command", 1,
                              [this](const std::string& t, const std::string& p) { OnCommand(t, p); });
     mqtt_service_->Subscribe("device/" + device_id_ + "/config", 1,
@@ -137,7 +138,7 @@ void DeviceMqtt::Stop() {
 bool DeviceMqtt::IsConnected() const {
     return mqtt_service_ && mqtt_service_->IsConnected();
 }
-
+// 设置收到升级请求回调函数
 void DeviceMqtt::SetOnUpgradeRequested(std::function<void(bool force)> callback) {
     on_upgrade_requested_ = std::move(callback);
 }

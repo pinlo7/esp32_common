@@ -154,7 +154,7 @@ void App::ActivationTask() {
     }
 
     if (!skip_ota_check) {
-        CheckNewVersion();
+        CheckNewVersion();  //里面有标记固件有效功能
         ESP_LOGI(TAG, "当前版本 %s", ota_->GetCurrentVersion().c_str());
     } else {
         ESP_LOGW(TAG, "Skip OTA check: no device secret and no provision key");
@@ -164,6 +164,10 @@ void App::ActivationTask() {
     // 激活/OTA 检查完成后启动 MQTT 服务（升级成功会重启，不会走到这里）
     if (ota_->HasDeviceSecret() && !mqtt_service_) {
         mqtt_service_ = std::make_unique<DeviceMqtt>();
+        /** 注入底层 Mqtt 传输工厂（必须在 Start 前调用，转发给 MqttService） */
+        mqtt_service_->SetMqttFactory([](){
+            return Board::GetInstance().GetNetwork()->CreateMqtt();
+        });
         mqtt_service_->SetOnUpgradeRequested([this](bool force) { UpgradeByCommand(force); });
         if (mqtt_service_->Start()) {
             ESP_LOGI(TAG, "MQTT service started");
@@ -321,9 +325,12 @@ bool App::UpgradeFirmware(const std::string& url, const std::string& version) {
     // audio_service_.Stop();
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    bool upgrade_success = Ota::Upgrade(upgrade_url, [](int progress, size_t speed) {
-        ;
-    });
+    bool upgrade_success = Ota::Upgrade(upgrade_url,
+                                        ota_->GetFirmwareChecksum(),
+                                        ota_->GetFirmwareFileSize(),
+                                        [](int progress, size_t speed) {
+                                            ;
+                                        });
 
     if (!upgrade_success) {
         // Upgrade failed, restart audio service and continue running

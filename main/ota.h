@@ -42,10 +42,15 @@ public:
     /**
      * 静态方法：执行固件升级
      * @param firmware_url 固件下载 URL
+     * @param expected_checksum 期望的固件 SHA256（hex），空串则跳过校验
+     * @param expected_file_size 期望的固件字节数，<=0 则跳过大小核对
      * @param callback 进度回调
      * @return true 成功，false 失败
      */
-    static bool Upgrade(const std::string& firmware_url, std::function<void(int progress, size_t speed)> callback);
+    static bool Upgrade(const std::string& firmware_url,
+                        const std::string& expected_checksum,
+                        long long expected_file_size,
+                        std::function<void(int progress, size_t speed)> callback);
 
     /**
      * 标记当前固件为有效（取消回滚）
@@ -66,6 +71,8 @@ public:
     const std::string& GetActivationMessage() const { return activation_message_; }
     const std::string& GetFirmwareVersion() const { return firmware_version_; }
     const std::string& GetFirmwareUrl() const { return firmware_url_; }
+    const std::string& GetFirmwareChecksum() const { return firmware_checksum_; }
+    long long GetFirmwareFileSize() const { return firmware_file_size_; }
     const std::string& GetCurrentVersion() const { return current_version_; }
 
 private:
@@ -97,6 +104,8 @@ private:
     std::string current_version_;
     std::string firmware_version_;
     std::string firmware_url_;
+    std::string firmware_checksum_;   // 固件 SHA256（hex），下载后完整性校验
+    long long firmware_file_size_ = 0;  // 固件字节数，下载后核对
     std::string device_key_;  // 从 NVS 加载的设备密钥（hex）
     std::string rotate_key_;  // OTA 响应下发的新密钥
     std::string provision_key_;  // 首次激活引导密钥（仅激活阶段使用，激活成功后清除）
