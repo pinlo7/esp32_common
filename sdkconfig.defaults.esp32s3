@@ -59,6 +59,14 @@ CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=1536
 # ==================== LVGL 图形配置 ====================
 # 启用 LVGL 快照功能
 CONFIG_LV_USE_SNAPSHOT=y
+# 使用 2 个绘制线程以提高性能
+CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=2
 
-# 自定义分区表文件路径 覆盖 skdconfig.defaults skdconfig
+# ===================== 自定义分区表文件路径 覆盖 skdconfig.defaults skdconfig
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/16m.csv"
+
+# ===================== 对于带有 PSRAM 的设备,优化缓存和 XIP 设置
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
+CONFIG_ESP32S3_DATA_CACHE_64KB=y
+CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y

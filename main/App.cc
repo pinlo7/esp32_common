@@ -7,6 +7,7 @@
 #include "settings.h"
 #include <esp_app_desc.h>
 #include <time.h>
+#include "display.h"
 
 #define TAG "app"
 
@@ -37,7 +38,10 @@ App::~App() {
 void App::Initialize() {
     // Initialize and run the application
     auto &board = Board::GetInstance();
-
+    auto display = new Display();
+    display->Init();
+    // board.SetDisplay(display);
+    
     board.SetNetworkEventCallback(
         [this](NetworkEvent event, const std::string &data) {
             std::lock_guard<std::mutex> lock(network_mutex_);

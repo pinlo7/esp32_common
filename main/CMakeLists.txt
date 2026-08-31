@@ -7,6 +7,12 @@ idf_component_register(SRCS "main.cc"
                             "App.cc"
                             "ota.cc"
                             "device_mqtt.cc"
+                            "display/display.cc"
+                            "display/lvgl/cbin_font.c"
+                            "display/lvgl/lvgl_font.cc"
                     INCLUDE_DIRS    "."
                                     "board/include"
-                                    "common/include")
+                                    "common/include"
+                                    "display"
+                                    "display/lvgl"
+                                    )
