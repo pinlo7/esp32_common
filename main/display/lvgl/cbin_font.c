@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include "esp_log.h"
+
+#define TAG "cbin_font"
 
 static inline void* malloc_cpy(void* src, size_t sz) {
     void* p = lv_malloc(sz);
@@ -30,6 +33,17 @@ lv_font_t* cbin_font_create(uint8_t* bin_addr) {
     bin_addr += (uintptr_t)font->dsc;
     lv_font_fmt_txt_dsc_t* dsc = (lv_font_fmt_txt_dsc_t*)malloc_cpy(bin_addr, sizeof(lv_font_fmt_txt_dsc_t));
     font->dsc = dsc;
+
+    /* 字体 bin 是按 LVGL “--large” 选项生成的：每个 glyph 描述符固定 16 字节。
+     * 因此 LVGL 必须开启 LV_FONT_FMT_TXT_LARGE(=1)，否则运行时按 8 字节步长读取
+     * 描述符表，box_h 等字段全是错位数据，文字会一个都画不出来。 */
+    if(sizeof(lv_font_fmt_txt_glyph_dsc_t) != 16) {
+        ESP_LOGE(TAG, "require LV_FONT_FMT_TXT_LARGE=1 for this font bin (glyph_dsc=%d bytes)",
+                 (int)sizeof(lv_font_fmt_txt_glyph_dsc_t));
+        lv_free(dsc);
+        lv_free(font);
+        return NULL;
+    }
 
     addr_add((void**)&dsc->glyph_bitmap, (uintptr_t)bin_addr);
     addr_add((void**)&dsc->glyph_dsc, (uintptr_t)bin_addr);

@@ -8,6 +8,7 @@
 #include <esp_app_desc.h>
 #include <time.h>
 #include "display.h"
+#include "assets.h"
 
 #define TAG "app"
 
@@ -38,9 +39,9 @@ App::~App() {
 void App::Initialize() {
     // Initialize and run the application
     auto &board = Board::GetInstance();
-    auto display = new Display();
+    Display* display = new Display();
     display->Init();
-    // board.SetDisplay(display);
+    display->SetupUI();
     
     board.SetNetworkEventCallback(
         [this](NetworkEvent event, const std::string &data) {

@@ -86,6 +86,9 @@ CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y
 CONFIG_LV_USE_CLIB_SPRINTF=y
 
+# 自定义字体 bin 按 LVGL --large 格式生成(16 字节 glyph 描述符),必须开启
+CONFIG_LV_FONT_FMT_TXT_LARGE=y
+
 # 显示刷新率(单位:毫秒,15ms ≈ 66 FPS)
 CONFIG_LV_DEF_REFR_PERIOD=15
 

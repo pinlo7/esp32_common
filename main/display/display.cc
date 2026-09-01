@@ -2,6 +2,8 @@
 #include "config.h"
 #include "esp_log.h"
 #include <esp_lcd_panel_vendor.h>
+#include "assets.h"
+#include "lvgl_theme.h"
 
 #define TAG "Display"
 
@@ -16,6 +18,12 @@ Display::~Display() {
 void Display::Init() {
     InitSpi();
     initDisplay();
+
+    //注册主题
+    auto default_theme = new LvglTheme("default");
+    LvglThemeManager::GetInstance().RegisterTheme("default", default_theme);
+
+    initAssetsFonts();
 }
 
 void Display::InitSpi() {
@@ -101,10 +109,43 @@ void Display::initDisplay() {
     ESP_ERROR_CHECK(esp_lv_adapter_start());
 
     // 步骤 5: 使用 LVGL API 绘制界面(需要先加锁)
+    // if (esp_lv_adapter_lock(-1) == ESP_OK) {
+    //     lv_obj_t *label = lv_label_create(lv_scr_act());
+    //     lv_label_set_text(label, "Hello LVGL!");
+    //     lv_obj_center(label);
+    //     esp_lv_adapter_unlock();
+    // }
+}
+
+void Display::initAssetsFonts() {
+    auto& assets = Assets::GetInstance();
+    assets.Apply();
+}
+
+void Display::SetupUI() {
+    auto& theme_manager = LvglThemeManager::GetInstance();
+    auto default_theme = theme_manager.GetTheme("default");
     if (esp_lv_adapter_lock(-1) == ESP_OK) {
         lv_obj_t *label = lv_label_create(lv_scr_act());
-        lv_label_set_text(label, "Hello LVGL!");
+        auto text_font = default_theme->text_font()->font();
+
+        // 核心字体合法性校验
+        if (!text_font || !text_font->dsc || !text_font->get_glyph_bitmap)
+        {
+            ESP_LOGE(TAG, "font invalid, dsc/cmap null");
+            esp_lv_adapter_unlock();
+            return;
+        }
+        
+        // 先测英文，排查中文缺失问题
+        lv_label_set_text(label, "我来了乐鑫");
+        lv_obj_set_style_text_font(label, text_font, 0);
+        lv_obj_set_style_text_color(label, LvglTheme::ParseColor("#112233"), 0);
         lv_obj_center(label);
+
+        ESP_LOGI(TAG, "line_height: %d", text_font->line_height);
+        ESP_LOGI(TAG, "base_line: %d", text_font->base_line);
+        ESP_LOGI(TAG, "underline_position: %d", text_font->underline_position);
         esp_lv_adapter_unlock();
     }
 }

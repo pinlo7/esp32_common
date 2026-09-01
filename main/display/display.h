@@ -8,10 +8,11 @@ public:
     ~Display();
 
     void Init();
+    void SetupUI();
 private:
     void InitSpi();
     void initDisplay();
-    // void InitGpio();
+    void initAssetsFonts();
 };
 
 
